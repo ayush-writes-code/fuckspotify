@@ -76,6 +76,7 @@ function App() {
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [isAutoplaying, setIsAutoplaying] = useState(false);
 
   // Refs
   const audioRef = useRef(new Audio());
@@ -234,20 +235,46 @@ function App() {
     }
   }, [currentTrack, isLyricsOpen, isRadio]);
 
-  // --- Audio Logic ---
+  const handleAutoplay = async () => {
+    if (currentTrack.id === 'default' || !currentTrack.artist) {
+      setIsPlaying(false);
+      return;
+    }
+    setIsAutoplaying(true);
+    try {
+      // Use the artist of the last played track to find similar music
+      const similarTracks = await fetchMusicApi(currentTrack.artist);
+      const newTracks = similarTracks.filter(t => !currentPlaylist.some(pt => pt.id === t.id));
+      if (newTracks.length > 0) {
+        setCurrentPlaylist(prev => [...prev, ...newTracks]);
+        setOriginalPlaylist(prev => [...prev, ...newTracks]);
+        setCurrentTrackIndex(currentPlaylist.length); // Play the first of the newly added tracks
+        setIsPlaying(true);
+      } else {
+        setIsPlaying(false);
+      }
+    } catch (err) {
+      console.error("Autoplay failed:", err);
+      setIsPlaying(false);
+    } finally {
+      setIsAutoplaying(false);
+    }
+  };
+
   const handleNext = (overrideRepeatMode = repeatMode) => {
     if (isRadio) return;
     if (currentPlaylist.length > 0) {
       let nextIndex = currentTrackIndex + 1;
       if (nextIndex >= currentPlaylist.length) {
         if (overrideRepeatMode === 0) {
-          setIsPlaying(false);
+          handleAutoplay();
           return;
         }
         nextIndex = 0; 
+      } else {
+        setCurrentTrackIndex(nextIndex);
+        setIsPlaying(true);
       }
-      setCurrentTrackIndex(nextIndex);
-      setIsPlaying(true);
     }
   };
 
@@ -867,7 +894,14 @@ function App() {
             </div>
           ) : (
             <div className="font-display text-secondary" style={{textAlign: 'center', marginTop: '60px', letterSpacing: '1px'}}>
-              QUEUE IS EMPTY
+              {isAutoplaying ? (
+                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px'}}>
+                  <Loader2 className="animate-spin text-accent mx-auto" size={32} />
+                  <span style={{fontSize: '10px', opacity: 0.6}}>AUTOPLAYING SIMILAR MUSIC...</span>
+                </div>
+              ) : (
+                <>QUEUE IS EMPTY<br/><br/><span style={{fontSize: '10px', opacity: 0.6}}>AUTOPLAY WILL PLAY SIMILAR MUSIC</span></>
+              )}
             </div>
           )}
         </div>
@@ -908,15 +942,47 @@ function App() {
         )}
 
         <div className="mobile-track-info">
-          <div>
+          <div style={{flex: 1, overflow: 'hidden'}}>
             <div className="mobile-track-title font-display text-primary">{currentDisplayTrack.title}</div>
             <div className="mobile-track-artist font-display text-secondary">{currentDisplayTrack.artist}</div>
           </div>
-          <button className="icon-btn" onClick={() => {
-            if(currentDisplayTrack.id !== 'default') handleToggleFavorite(currentDisplayTrack);
-          }}>
-            <Heart size={28} fill={favorites.find(t => t.id === currentDisplayTrack.id) ? "currentColor" : "none"} className={favorites.find(t => t.id === currentDisplayTrack.id) ? "text-accent" : "text-secondary"} />
-          </button>
+          <div style={{display: 'flex', gap: '8px', position: 'relative'}}>
+            <button className="icon-btn" onClick={() => {
+              if(currentDisplayTrack.id !== 'default') handleToggleFavorite(currentDisplayTrack);
+            }}>
+              <Heart size={28} fill={favorites.find(t => t.id === currentDisplayTrack.id) ? "currentColor" : "none"} className={favorites.find(t => t.id === currentDisplayTrack.id) ? "text-accent" : "text-secondary"} />
+            </button>
+            <button className="icon-btn" onClick={() => setDropdownOpenId(dropdownOpenId === 'player' ? null : 'player')}>
+              <MoreHorizontal size={28} className="text-secondary hover:text-primary" />
+            </button>
+
+            {dropdownOpenId === 'player' && (
+              <div className="track-dropdown glass-panel shadow-lg" style={{bottom: '40px', right: '0', top: 'auto', minWidth: '200px'}}>
+                <button className="dropdown-item font-display" onClick={() => handleToggleFavorite(currentDisplayTrack)}>
+                  <Heart size={14} fill={favorites.find(t => t.id === currentDisplayTrack.id) ? "currentColor" : "none"} className={favorites.find(t => t.id === currentDisplayTrack.id) ? "text-accent" : ""} /> 
+                  {favorites.find(t => t.id === currentDisplayTrack.id) ? 'REMOVE FAVORITE' : 'ADD TO FAVORITES'}
+                </button>
+                <button className="dropdown-item font-display" onClick={() => handlePlayNext(currentDisplayTrack)}>
+                  <Play size={14} fill="currentColor" /> PLAY NEXT
+                </button>
+                <button className="dropdown-item font-display" onClick={() => handleAddToQueue(currentDisplayTrack)}>
+                  <ListMusic size={14} /> ADD TO QUEUE
+                </button>
+                
+                {playlists.length > 0 && (
+                  <>
+                    <div className="dropdown-divider"></div>
+                    <div className="dropdown-label text-secondary font-display">ADD TO PLAYLIST</div>
+                    {playlists.map(pl => (
+                      <button key={pl.id} className="dropdown-item font-display" onClick={() => handleAddToPlaylist(currentDisplayTrack, pl.id)}>
+                        <Plus size={14} /> {pl.name}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mobile-progress">
