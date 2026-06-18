@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Search, Home, Radio, Compass, Disc, 
   Play, Pause, SkipBack, SkipForward, 
-  Shuffle, Repeat, Repeat1, Volume2, MoreHorizontal, Heart, Mic2, Loader2, ChevronDown, MessageCircle
+  Shuffle, Repeat, Repeat1, Volume2, MoreHorizontal, Heart, Mic2, Loader2, ChevronDown, MessageCircle,
+  Library, Plus
 } from 'lucide-react';
 import './index.css';
 
@@ -22,15 +23,6 @@ const DEFAULT_TRACK = {
   time: '0:00'
 };
 
-const mapITunesTrack = (item) => ({
-  id: item.trackId,
-  title: item.trackName,
-  artist: item.artistName,
-  img: item.artworkUrl100 ? item.artworkUrl100.replace('100x100bb', '400x400bb') : 'https://images.unsplash.com/photo-1614680376573-df3480f0c6ff?q=80&w=400',
-  audioUrl: item.previewUrl,
-  time: '0:30' // iTunes previews are exactly 30s
-});
-
 function App() {
   const [activeTab, setActiveTab] = useState('new');
   
@@ -44,9 +36,15 @@ function App() {
   const [isLoadingSearch, setIsLoadingSearch] = useState(false);
 
   // Playback States
-  const [currentPlaylist, setCurrentPlaylist] = useState([]);
-  const [originalPlaylist, setOriginalPlaylist] = useState([]);
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(-1);
+  const [currentPlaylist, setCurrentPlaylist] = useState(() => {
+    try { const t = JSON.parse(localStorage.getItem('fuckspotify_lastTrack')); return (t && t.id !== 'default') ? [t] : []; } catch { return []; }
+  });
+  const [originalPlaylist, setOriginalPlaylist] = useState(() => {
+    try { const t = JSON.parse(localStorage.getItem('fuckspotify_lastTrack')); return (t && t.id !== 'default') ? [t] : []; } catch { return []; }
+  });
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(() => {
+    try { const t = JSON.parse(localStorage.getItem('fuckspotify_lastTrack')); return (t && t.id !== 'default') ? 0 : -1; } catch { return -1; }
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0); 
   const [currentTime, setCurrentTime] = useState(0); 
@@ -56,12 +54,20 @@ function App() {
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState(0); // 0 = off, 1 = all, 2 = one
   
+  // User Storage States
+  const [favorites, setFavorites] = useState(() => {
+    try { const f = JSON.parse(localStorage.getItem('fuckspotify_favs')); return f || []; } catch { return []; }
+  });
+  const [playlists, setPlaylists] = useState(() => {
+    try { const p = JSON.parse(localStorage.getItem('fuckspotify_playlists')); return p || []; } catch { return []; }
+  });
+  const [dropdownOpenId, setDropdownOpenId] = useState(null);
+
   // Mobile UI States
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [lyrics, setLyrics] = useState('');
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
-  const [isAudioLoading, setIsAudioLoading] = useState(false);
 
   // Refs
   const audioRef = useRef(new Audio());
@@ -71,6 +77,21 @@ function App() {
     ? currentPlaylist[currentTrackIndex] 
     : DEFAULT_TRACK;
 
+  // Save Last Played Track
+  useEffect(() => {
+    if (currentTrack && currentTrack.id !== 'default' && !isRadio) {
+      localStorage.setItem('fuckspotify_lastTrack', JSON.stringify(currentTrack));
+    }
+  }, [currentTrack, isRadio]);
+
+  // Global click listener to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = () => setDropdownOpenId(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // --- API Fetching ---
   const fetchMusicApi = async (query) => {
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
@@ -95,10 +116,10 @@ function App() {
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setSearchResults([]);
+      setTimeout(() => setSearchResults([]), 0);
       return;
     }
-    setIsLoadingSearch(true);
+    setTimeout(() => setIsLoadingSearch(true), 0);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     
     searchTimeoutRef.current = setTimeout(() => {
@@ -112,8 +133,10 @@ function App() {
   // --- Lyrics Fetching ---
   useEffect(() => {
     if (isLyricsOpen && currentTrack.id !== 'default' && !isRadio) {
-      setIsLoadingLyrics(true);
-      setLyrics('');
+      setTimeout(() => {
+        setIsLoadingLyrics(true);
+        setLyrics('');
+      }, 0);
       fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(currentTrack.artist)}/${encodeURIComponent(currentTrack.title)}`)
         .then(res => res.json())
         .then(data => {
@@ -175,55 +198,32 @@ function App() {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (currentTrack.id === 'default' || isRadio) return;
-
-    let active = true;
-
-    const loadAndPlay = async () => {
-      let url = currentTrack.audioUrl;
-      
-      // If we don't have the stream URL yet, fetch it
-      if (!url) {
-        setIsAudioLoading(true);
-        try {
-          const res = await fetch(`/api/stream?id=${encodeURIComponent(currentTrack.id)}`);
-          const data = await res.json();
-          if (data.streamUrl && active) {
-            url = data.streamUrl;
-            // Cache the stream URL on the track object
-            currentTrack.audioUrl = url;
-          }
-        } catch (err) {
-          console.error('Error fetching stream URL:', err);
-        } finally {
-          if (active) setIsAudioLoading(false);
-        }
-      }
-
-      if (!active || !url) return;
-
-      if (audio.src !== url) {
-        audio.src = url;
+    if (currentTrack.audioUrl) {
+      if (audio.src !== currentTrack.audioUrl) {
+        audio.src = currentTrack.audioUrl;
         setProgress(0);
         setCurrentTime(0);
       }
-
       if (isPlaying) {
         audio.play().catch(e => console.error("Playback failed:", e));
       } else {
         audio.pause();
       }
-    };
+    }
+  }, [currentTrack, isPlaying]);
 
-    loadAndPlay();
-
-    return () => {
-      active = false;
-    };
-  }, [currentTrack.id, isPlaying, isRadio]);
-
-  const handlePlayTrack = (track, playlist) => {
+  const handlePlayTrack = async (track, playlist) => {
     setIsRadio(false);
+    
+    try {
+      const res = await fetch(`/api/stream?id=${encodeURIComponent(track.id)}`);
+      const data = await res.json();
+      if (data.streamUrl) {
+        track.audioUrl = data.streamUrl;
+      }
+    } catch (err) {
+      console.error('Error fetching stream URL:', err);
+    }
     
     if (isShuffle) {
       const remaining = playlist.filter(t => t.id !== track.id);
@@ -239,7 +239,7 @@ function App() {
       } else {
         setCurrentPlaylist(playlist);
         setOriginalPlaylist(playlist);
-        setCurrentTrackIndex(index);
+        setCurrentTrackIndex(index !== -1 ? index : 0);
         setIsPlaying(true);
       }
     }
@@ -304,7 +304,94 @@ function App() {
     setRepeatMode(prev => (prev + 1) % 3);
   };
 
+  // --- User Storage Actions ---
+  const handleToggleFavorite = (track) => {
+    setFavorites(prev => {
+      const isFav = prev.find(t => t.id === track.id);
+      const newFavs = isFav ? prev.filter(t => t.id !== track.id) : [...prev, track];
+      localStorage.setItem('fuckspotify_favs', JSON.stringify(newFavs));
+      return newFavs;
+    });
+    setDropdownOpenId(null);
+  };
+
+  const handleCreatePlaylist = () => {
+    const name = prompt('ENTER PLAYLIST NAME:');
+    if (!name || name.trim() === '') return;
+    const newPlaylist = {
+      id: Date.now().toString(),
+      name: name.toUpperCase(),
+      tracks: []
+    };
+    setPlaylists(prev => {
+      const updated = [...prev, newPlaylist];
+      localStorage.setItem('fuckspotify_playlists', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleAddToPlaylist = (track, playlistId) => {
+    setPlaylists(prev => {
+      const updated = prev.map(pl => {
+        if (pl.id === playlistId) {
+          if (!pl.tracks.find(t => t.id === track.id)) {
+            return { ...pl, tracks: [...pl.tracks, track] };
+          }
+        }
+        return pl;
+      });
+      localStorage.setItem('fuckspotify_playlists', JSON.stringify(updated));
+      return updated;
+    });
+    setDropdownOpenId(null);
+  };
+
   // --- Views ---
+  const renderTrackWidget = (track, contextPlaylist, index = 0) => {
+    const isFav = favorites.find(t => t.id === track.id);
+    return (
+      <div 
+        key={`${track.id}-${index}`} 
+        className={`track-widget ${currentTrack.id === track.id ? 'playing' : ''}`}
+        onClick={() => handlePlayTrack(track, contextPlaylist)}
+      >
+        <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>
+        <div className="track-info">
+          <div className="track-title">{track.title}</div>
+          <div className="track-artist">{track.artist}</div>
+        </div>
+        <div className="track-actions" style={{position: 'relative'}} onClick={(e) => {
+          e.stopPropagation();
+          setDropdownOpenId(dropdownOpenId === track.id ? null : track.id);
+        }}>
+          <button className="icon-btn" style={{padding: '4px'}}>
+            <MoreHorizontal size={18} className="text-secondary hover:text-primary" />
+          </button>
+          
+          {dropdownOpenId === track.id && (
+            <div className="track-dropdown glass-panel shadow-lg" onClick={(e) => e.stopPropagation()}>
+              <button className="dropdown-item font-display" onClick={() => handleToggleFavorite(track)}>
+                <Heart size={14} fill={isFav ? "currentColor" : "none"} className={isFav ? "text-accent" : ""} /> 
+                {isFav ? 'REMOVE FAVORITE' : 'ADD TO FAVORITES'}
+              </button>
+              {playlists.length > 0 && (
+                <>
+                  <div className="dropdown-divider"></div>
+                  <div className="dropdown-label text-secondary font-display">ADD TO PLAYLIST</div>
+                  {playlists.map(pl => (
+                    <button key={pl.id} className="dropdown-item font-display" onClick={() => handleAddToPlaylist(track, pl.id)}>
+                      <Plus size={14} /> {pl.name}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderNewView = () => (
     <div className="page-container">
       {isLoadingNew ? (
@@ -330,22 +417,7 @@ function App() {
               BEST NEW SONGS <span className="text-accent">[]</span>
             </div>
             <div className="track-grid">
-              {newTracks.slice(1).map((track) => (
-                <div 
-                  key={track.id} 
-                  className={`track-widget ${currentTrack.id === track.id ? 'playing' : ''}`}
-                  onClick={() => handlePlayTrack(track, newTracks)}
-                >
-                  <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>
-                  <div className="track-info">
-                    <div className="track-title">{track.title}</div>
-                    <div className="track-artist">{track.artist}</div>
-                  </div>
-                  <div style={{color: 'var(--text-secondary)'}}>
-                    <MoreHorizontal size={18} />
-                  </div>
-                </div>
-              ))}
+              {newTracks.slice(1).map((track, i) => renderTrackWidget(track, newTracks, i))}
             </div>
           </section>
         </>
@@ -364,22 +436,7 @@ function App() {
               RECENTLY PLAYED <span className="text-accent">[]</span>
             </div>
             <div className="track-grid">
-              {homeTracks.slice(0, 4).map((track) => (
-                <div 
-                  key={track.id} 
-                  className={`track-widget ${currentTrack.id === track.id ? 'playing' : ''}`}
-                  onClick={() => handlePlayTrack(track, homeTracks)}
-                >
-                  <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>
-                  <div className="track-info">
-                    <div className="track-title">{track.title}</div>
-                    <div className="track-artist">{track.artist}</div>
-                  </div>
-                  <div style={{color: 'var(--text-secondary)'}}>
-                    <MoreHorizontal size={18} />
-                  </div>
-                </div>
-              ))}
+              {homeTracks.slice(0, 4).map((track, i) => renderTrackWidget(track, homeTracks, i))}
             </div>
           </section>
 
@@ -388,22 +445,7 @@ function App() {
               TOP PICKS FOR YOU <span className="text-accent">[]</span>
             </div>
             <div className="track-grid">
-              {homeTracks.slice(4, 10).map((track) => (
-                <div 
-                  key={track.id} 
-                  className={`track-widget ${currentTrack.id === track.id ? 'playing' : ''}`}
-                  onClick={() => handlePlayTrack(track, homeTracks)}
-                >
-                  <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>
-                  <div className="track-info">
-                    <div className="track-title">{track.title}</div>
-                    <div className="track-artist">{track.artist}</div>
-                  </div>
-                  <div style={{color: 'var(--text-secondary)'}}>
-                    <MoreHorizontal size={18} />
-                  </div>
-                </div>
-              ))}
+              {homeTracks.slice(4, 10).map((track, i) => renderTrackWidget(track, homeTracks, i))}
             </div>
           </section>
         </>
@@ -413,7 +455,7 @@ function App() {
 
   const renderSearchView = () => (
     <div className="page-container">
-      <div className="search-container">
+      <div className="search-container glass-panel">
         <Search size={28} className="text-accent" />
         <input 
           type="text" 
@@ -433,22 +475,7 @@ function App() {
             <div style={{display: 'flex', justifyContent: 'center', padding: '40px'}}><Loader2 className="animate-spin text-accent" size={32} /></div>
           ) : searchResults.length > 0 ? (
             <div className="track-grid">
-              {searchResults.map((track) => (
-                <div 
-                  key={track.id} 
-                  className={`track-widget ${currentTrack.id === track.id ? 'playing' : ''}`}
-                  onClick={() => handlePlayTrack(track, searchResults)}
-                >
-                  <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>
-                  <div className="track-info">
-                    <div className="track-title">{track.title}</div>
-                    <div className="track-artist">{track.artist}</div>
-                  </div>
-                  <div style={{color: 'var(--text-secondary)'}}>
-                    <MoreHorizontal size={18} />
-                  </div>
-                </div>
-              ))}
+              {searchResults.map((track, i) => renderTrackWidget(track, searchResults, i))}
             </div>
           ) : (
             <p className="text-secondary font-display">NO MATCHES FOUND. TRY ANOTHER QUERY.</p>
@@ -468,6 +495,62 @@ function App() {
           </div>
         </section>
       )}
+    </div>
+  );
+
+  const renderLibraryView = () => (
+    <div className="page-container">
+      <section>
+        <div className="section-header font-display text-secondary">
+          FAVORITES <span className="text-accent">[{favorites.length}]</span>
+        </div>
+        {favorites.length > 0 ? (
+          <div className="track-grid">
+            {favorites.map((track, i) => renderTrackWidget(track, favorites, i))}
+          </div>
+        ) : (
+          <p className="text-secondary font-display mb-8" style={{marginBottom: '32px'}}>NO FAVORITES YET. HEART SOME TRACKS TO SEE THEM HERE.</p>
+        )}
+      </section>
+
+      <section style={{marginTop: '40px'}}>
+        <div className="section-header font-display text-secondary" style={{justifyContent: 'space-between', borderBottom: 'none'}}>
+          <div>MY PLAYLISTS <span className="text-accent">[{playlists.length}]</span></div>
+          <button className="btn-primary" style={{padding: '8px 16px', fontSize: '12px'}} onClick={handleCreatePlaylist}>
+            <Plus size={14} /> NEW PLAYLIST
+          </button>
+        </div>
+        
+        {playlists.length > 0 ? (
+          <div className="playlist-grid">
+            {playlists.map(pl => (
+              <div key={pl.id} className="playlist-widget glass-panel" onClick={() => {
+                if (pl.tracks.length > 0) handlePlayTrack(pl.tracks[0], pl.tracks);
+              }}>
+                <div className="playlist-art">
+                  {pl.tracks.length >= 4 ? (
+                    <div className="art-grid">
+                      {pl.tracks.slice(0, 4).map((t, i) => (
+                        <div key={i} style={{backgroundImage: `url(${t.img})`}}></div>
+                      ))}
+                    </div>
+                  ) : pl.tracks.length > 0 ? (
+                    <div className="art-single" style={{backgroundImage: `url(${pl.tracks[0].img})`}}></div>
+                  ) : (
+                    <div className="art-empty"><Disc size={32} className="text-secondary opacity-50" /></div>
+                  )}
+                </div>
+                <div className="playlist-info">
+                  <div className="font-display" style={{fontSize: '18px', fontWeight: 700}}>{pl.name}</div>
+                  <div className="text-secondary font-display" style={{fontSize: '12px', letterSpacing: '1px'}}>{pl.tracks.length} TRACKS</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-secondary font-display" style={{marginTop: '16px'}}>CREATE A PLAYLIST TO GET STARTED.</p>
+        )}
+      </section>
     </div>
   );
 
@@ -514,7 +597,7 @@ function App() {
 
   // Helper calculations
   const totalSegments = 40;
-  const activeSegments = isRadio ? Math.floor((Date.now() / 100) % totalSegments) : Math.floor(progress * totalSegments);
+  const activeSegments = isRadio ? 0 : Math.floor(progress * totalSegments);
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
@@ -556,7 +639,11 @@ function App() {
             <div className="mobile-track-title font-display text-primary">{currentDisplayTrack.title}</div>
             <div className="mobile-track-artist font-display text-secondary">{currentDisplayTrack.artist}</div>
           </div>
-          <Heart size={28} className="text-secondary" />
+          <button className="icon-btn" onClick={() => {
+            if(currentDisplayTrack.id !== 'default') handleToggleFavorite(currentDisplayTrack);
+          }}>
+            <Heart size={28} fill={favorites.find(t => t.id === currentDisplayTrack.id) ? "currentColor" : "none"} className={favorites.find(t => t.id === currentDisplayTrack.id) ? "text-accent" : "text-secondary"} />
+          </button>
         </div>
 
         <div className="mobile-progress">
@@ -583,7 +670,7 @@ function App() {
             <SkipBack size={40} fill="currentColor" />
           </button>
           <button className="play-btn-large" onClick={handleTogglePlay}>
-            {isAudioLoading ? <Loader2 className="animate-spin text-accent" size={36} /> : (isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" />)}
+            {isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" />}
           </button>
           <button className="icon-btn" onClick={handleNext}>
             <SkipForward size={40} fill="currentColor" />
@@ -624,6 +711,9 @@ function App() {
           <button className={`nav-item ${activeTab === 'new' ? 'active' : ''}`} onClick={() => setActiveTab('new')}>
             <Compass size={18} /> NEW
           </button>
+          <button className={`nav-item ${activeTab === 'library' ? 'active' : ''}`} onClick={() => setActiveTab('library')}>
+            <Library size={18} /> LIBRARY
+          </button>
           <button className={`nav-item ${activeTab === 'radio' ? 'active' : ''}`} onClick={() => setActiveTab('radio')}>
             <Radio size={18} /> RADIO
           </button>
@@ -634,6 +724,7 @@ function App() {
         {activeTab === 'new' && renderNewView()}
         {activeTab === 'home' && renderHomeView()}
         {activeTab === 'search' && renderSearchView()}
+        {activeTab === 'library' && renderLibraryView()}
         {activeTab === 'radio' && renderRadioView()}
       </main>
 
@@ -657,7 +748,7 @@ function App() {
             <button className={`player-btn ${isShuffle ? 'text-accent' : ''}`} onClick={toggleShuffle}><Shuffle size={18} /></button>
             <button className="player-btn" onClick={handlePrev}><SkipBack size={20} fill="currentColor" /></button>
             <button className="play-btn" onClick={(e) => { e.stopPropagation(); handleTogglePlay(); }}>
-              {isAudioLoading ? <Loader2 className="animate-spin" size={20} /> : (isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />)}
+              {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
             </button>
             <button className="player-btn" onClick={handleNext}><SkipForward size={20} fill="currentColor" /></button>
             <button className={`player-btn ${repeatMode > 0 ? 'text-accent' : ''}`} onClick={toggleRepeat}>
@@ -695,7 +786,7 @@ function App() {
         {/* Mobile quick controls on mini player */}
         <div className="mobile-only-flex" style={{display: window.innerWidth <= 768 ? 'flex' : 'none', gap: '16px', alignItems: 'center'}}>
           <button className="player-btn" onClick={(e) => { e.stopPropagation(); handleTogglePlay(); }}>
-            {isAudioLoading ? <Loader2 className="animate-spin text-accent" size={24} /> : (isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />)}
+            {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
           </button>
         </div>
       </div>
@@ -707,8 +798,8 @@ function App() {
         <button className={`nav-item text-secondary ${activeTab === 'new' ? 'text-accent' : ''}`} style={{border: 'none', padding: '8px', backgroundColor: 'transparent'}} onClick={() => setActiveTab('new')}>
           <Compass size={24} />
         </button>
-        <button className={`nav-item text-secondary ${activeTab === 'radio' ? 'text-accent' : ''}`} style={{border: 'none', padding: '8px', backgroundColor: 'transparent'}} onClick={() => setActiveTab('radio')}>
-          <Radio size={24} />
+        <button className={`nav-item text-secondary ${activeTab === 'library' ? 'text-accent' : ''}`} style={{border: 'none', padding: '8px', backgroundColor: 'transparent'}} onClick={() => setActiveTab('library')}>
+          <Library size={24} />
         </button>
         <button className={`nav-item text-secondary ${activeTab === 'search' ? 'text-accent' : ''}`} style={{border: 'none', padding: '8px', backgroundColor: 'transparent'}} onClick={() => setActiveTab('search')}>
           <Search size={24} />
