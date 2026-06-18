@@ -61,6 +61,7 @@ function App() {
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [lyrics, setLyrics] = useState('');
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
 
   // Refs
   const audioRef = useRef(new Audio());
@@ -174,33 +175,55 @@ function App() {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (currentTrack.audioUrl) {
-      if (audio.src !== currentTrack.audioUrl) {
-        audio.src = currentTrack.audioUrl;
+    if (currentTrack.id === 'default' || isRadio) return;
+
+    let active = true;
+
+    const loadAndPlay = async () => {
+      let url = currentTrack.audioUrl;
+      
+      // If we don't have the stream URL yet, fetch it
+      if (!url) {
+        setIsAudioLoading(true);
+        try {
+          const res = await fetch(`/api/stream?id=${encodeURIComponent(currentTrack.id)}`);
+          const data = await res.json();
+          if (data.streamUrl && active) {
+            url = data.streamUrl;
+            // Cache the stream URL on the track object
+            currentTrack.audioUrl = url;
+          }
+        } catch (err) {
+          console.error('Error fetching stream URL:', err);
+        } finally {
+          if (active) setIsAudioLoading(false);
+        }
+      }
+
+      if (!active || !url) return;
+
+      if (audio.src !== url) {
+        audio.src = url;
         setProgress(0);
         setCurrentTime(0);
       }
+
       if (isPlaying) {
         audio.play().catch(e => console.error("Playback failed:", e));
       } else {
         audio.pause();
       }
-    }
-  }, [currentTrack, isPlaying]);
+    };
 
-  const handlePlayTrack = async (track, playlist) => {
+    loadAndPlay();
+
+    return () => {
+      active = false;
+    };
+  }, [currentTrack.id, isPlaying, isRadio]);
+
+  const handlePlayTrack = (track, playlist) => {
     setIsRadio(false);
-    
-    // Fetch stream URL from our backend
-    try {
-      const res = await fetch(`/api/stream?id=${encodeURIComponent(track.id)}`);
-      const data = await res.json();
-      if (data.streamUrl) {
-        track.audioUrl = data.streamUrl;
-      }
-    } catch (err) {
-      console.error('Error fetching stream URL:', err);
-    }
     
     if (isShuffle) {
       const remaining = playlist.filter(t => t.id !== track.id);
@@ -560,7 +583,7 @@ function App() {
             <SkipBack size={40} fill="currentColor" />
           </button>
           <button className="play-btn-large" onClick={handleTogglePlay}>
-            {isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" />}
+            {isAudioLoading ? <Loader2 className="animate-spin text-accent" size={36} /> : (isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" />)}
           </button>
           <button className="icon-btn" onClick={handleNext}>
             <SkipForward size={40} fill="currentColor" />
@@ -634,7 +657,7 @@ function App() {
             <button className={`player-btn ${isShuffle ? 'text-accent' : ''}`} onClick={toggleShuffle}><Shuffle size={18} /></button>
             <button className="player-btn" onClick={handlePrev}><SkipBack size={20} fill="currentColor" /></button>
             <button className="play-btn" onClick={(e) => { e.stopPropagation(); handleTogglePlay(); }}>
-              {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+              {isAudioLoading ? <Loader2 className="animate-spin" size={20} /> : (isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />)}
             </button>
             <button className="player-btn" onClick={handleNext}><SkipForward size={20} fill="currentColor" /></button>
             <button className={`player-btn ${repeatMode > 0 ? 'text-accent' : ''}`} onClick={toggleRepeat}>
@@ -672,7 +695,7 @@ function App() {
         {/* Mobile quick controls on mini player */}
         <div className="mobile-only-flex" style={{display: window.innerWidth <= 768 ? 'flex' : 'none', gap: '16px', alignItems: 'center'}}>
           <button className="player-btn" onClick={(e) => { e.stopPropagation(); handleTogglePlay(); }}>
-            {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+            {isAudioLoading ? <Loader2 className="animate-spin text-accent" size={24} /> : (isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />)}
           </button>
         </div>
       </div>
