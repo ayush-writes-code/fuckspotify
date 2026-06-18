@@ -1132,3 +1132,19 @@ button {
   right: 0 !important;
   width: 100% !important;
 }
+
+.is-mobile .player-track-info {
+  width: auto !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.is-mobile .player-track-info div {
+  min-width: 0 !important;
+}
+
+.is-mobile .player-track-info .font-display {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}

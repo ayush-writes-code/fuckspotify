@@ -3,7 +3,7 @@ import {
   Search, Home, Radio, Compass, Disc, 
   Play, Pause, SkipBack, SkipForward, 
   Shuffle, Repeat, Repeat1, Volume2, MoreHorizontal, Heart, Mic2, Loader2, ChevronDown, MessageCircle,
-  Library, Plus, X, Download, ListMusic
+  Library, Plus, X, Download, ListMusic, Share
 } from 'lucide-react';
 import './index.css';
 
@@ -66,6 +66,7 @@ function App() {
   // PWA Install States
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showIOSInstallPrompt, setShowIOSInstallPrompt] = useState(false);
   const [activePlaylistId, setActivePlaylistId] = useState(null);
 
   // Mobile & Overlay UI States
@@ -146,6 +147,22 @@ function App() {
   const handleDismissPwa = () => {
     setShowInstallPrompt(false);
     localStorage.setItem('fuckspotify_dismissed_install', 'true');
+  };
+
+  // --- iOS PWA Install Prompt ---
+  useEffect(() => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const hasDismissed = localStorage.getItem('fuckspotify_dismissed_ios_install');
+
+    if (isIOS && !isStandalone && !hasDismissed) {
+      setShowIOSInstallPrompt(true);
+    }
+  }, []);
+
+  const handleDismissIOSPwa = () => {
+    setShowIOSInstallPrompt(false);
+    localStorage.setItem('fuckspotify_dismissed_ios_install', 'true');
   };
 
   // --- API Fetching ---
@@ -1047,6 +1064,23 @@ function App() {
           <div className="pwa-actions">
             <button className="btn-primary font-display" style={{padding: '6px 12px', fontSize: '12px'}} onClick={handleInstallPwa}>INSTALL</button>
             <button className="icon-btn text-secondary hover:text-primary" onClick={handleDismissPwa}><X size={20} /></button>
+          </div>
+        </div>
+      )}
+
+      {showIOSInstallPrompt && (
+        <div className="pwa-install-banner glass-panel shadow-glow ios-prompt" style={{top: 'auto', bottom: '80px', left: '16px', right: '16px'}}>
+          <div className="pwa-banner-content">
+            <div className="pwa-icon">
+              <Share size={24} className="text-accent" />
+            </div>
+            <div className="pwa-text">
+              <div className="font-display" style={{fontSize: '14px'}}>INSTALL FUCKSPOTIFY</div>
+              <div className="font-display" style={{fontSize: '11px', color: 'rgba(255,255,255,0.7)'}}>TAP SHARE BUTTON <span style={{display: 'inline-block', transform: 'translateY(2px)'}}><Share size={12} /></span> AND SELECT 'ADD TO HOME SCREEN'</div>
+            </div>
+          </div>
+          <div className="pwa-actions">
+            <button className="icon-btn text-secondary hover:text-primary" onClick={handleDismissIOSPwa}><X size={20} /></button>
           </div>
         </div>
       )}
