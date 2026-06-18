@@ -6,6 +6,7 @@ import {
   Library, Plus, X, Download, ListMusic, Share
 } from 'lucide-react';
 import './index.css';
+import { getNextTrackIndex, parseLRC } from './lib/player.js';
 
 const CATEGORIES = [
   { id: 1, name: 'HIP-HOP', img: 'https://images.unsplash.com/photo-1605020420620-20c943cc4669?q=80&w=400' },
@@ -23,6 +24,8 @@ const DEFAULT_TRACK = {
   time: '0:00'
 };
 
+const getAudioUrl = (track) => `/api/audio?id=${encodeURIComponent(track.id)}`;
+
 function App() {
   const [activeTab, setActiveTab] = useState('new');
   
@@ -34,6 +37,11 @@ function App() {
   const [isLoadingNew, setIsLoadingNew] = useState(true);
   const [isLoadingHome, setIsLoadingHome] = useState(true);
   const [isLoadingSearch, setIsLoadingSearch] = useState(false);
+  const [newTracksError, setNewTracksError] = useState('');
+  const [homeTracksError, setHomeTracksError] = useState('');
+  const [searchError, setSearchError] = useState('');
+  const [searchReloadKey, setSearchReloadKey] = useState(0);
+  const [discoveryReloadKey, setDiscoveryReloadKey] = useState(0);
 
   // Playback States
   const [currentPlaylist, setCurrentPlaylist] = useState(() => {
@@ -66,22 +74,28 @@ function App() {
   // PWA Install States
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showIOSInstallPrompt, setShowIOSInstallPrompt] = useState(false);
+  const [showIOSInstallPrompt, setShowIOSInstallPrompt] = useState(() => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    return Boolean(isIOS && !isStandalone && !localStorage.getItem('fuckspotify_dismissed_ios_install'));
+  });
   const [activePlaylistId, setActivePlaylistId] = useState(null);
 
   // Mobile & Overlay UI States
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
-  const [lyrics, setLyrics] = useState({ type: 'empty', data: null });
-  const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
+  const [lyrics, setLyrics] = useState({ type: 'empty', data: null, trackId: null });
   const [isMobile, setIsMobile] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [audioError, setAudioError] = useState('');
   const [isAutoplaying, setIsAutoplaying] = useState(false);
 
   // Refs
   const audioRef = useRef(new Audio());
+  const directPlaybackTrackRef = useRef(null);
   const searchTimeoutRef = useRef(null);
+  const handleNextRef = useRef(null);
   const lyricsContainerRef = useRef(null);
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
 
@@ -98,6 +112,7 @@ function App() {
   const currentTrack = currentTrackIndex >= 0 && currentPlaylist[currentTrackIndex] 
     ? currentPlaylist[currentTrackIndex] 
     : DEFAULT_TRACK;
+  const isLoadingLyrics = isLyricsOpen && currentTrack.id !== 'default' && lyrics.trackId !== currentTrack.id;
 
   // Save Last Played Track
   useEffect(() => {
@@ -135,7 +150,7 @@ function App() {
       const hasInstalled = localStorage.getItem('fuckspotify_installed');
       // Also check if we are already running standalone
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-      
+
       if (!hasDismissed && !hasInstalled && !isStandalone) {
         setShowInstallPrompt(true);
       }
@@ -161,32 +176,21 @@ function App() {
     localStorage.setItem('fuckspotify_dismissed_install', 'true');
   };
 
-  // --- iOS PWA Install Prompt ---
-  useEffect(() => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    const hasDismissed = localStorage.getItem('fuckspotify_dismissed_ios_install');
-
-    if (isIOS && !isStandalone && !hasDismissed) {
-      setShowIOSInstallPrompt(true);
-    }
-  }, []);
-
   const handleDismissIOSPwa = () => {
     setShowIOSInstallPrompt(false);
     localStorage.setItem('fuckspotify_dismissed_ios_install', 'true');
   };
 
   // --- API Fetching ---
-  const fetchMusicApi = async (query) => {
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      return data.results || [];
-    } catch (err) {
-      console.error('Error fetching music:', err);
-      return [];
+  const fetchMusicApi = async (query, options = {}) => {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, options);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Music service is unavailable');
     }
+
+    return data.results || [];
   };
 
   // --- Queue Logic ---
@@ -220,79 +224,124 @@ function App() {
   };
 
   useEffect(() => {
-    fetchMusicApi('billie eilish').then(tracks => {
-      setNewTracks(tracks);
-      setIsLoadingNew(false);
-    });
-    fetchMusicApi('the weeknd').then(tracks => {
-      setHomeTracks(tracks);
-      setIsLoadingHome(false);
-    });
-  }, []);
+    const controller = new AbortController();
+
+    fetchMusicApi('billie eilish', { signal: controller.signal })
+      .then(setNewTracks)
+      .catch((error) => {
+        if (error.name !== 'AbortError') setNewTracksError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingNew(false);
+      });
+
+    fetchMusicApi('the weeknd', { signal: controller.signal })
+      .then(setHomeTracks)
+      .catch((error) => {
+        if (error.name !== 'AbortError') setHomeTracksError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingHome(false);
+      });
+
+    return () => controller.abort();
+  }, [discoveryReloadKey]);
+
+  const retryDiscovery = () => {
+    setIsLoadingNew(true);
+    setIsLoadingHome(true);
+    setNewTracksError('');
+    setHomeTracksError('');
+    setDiscoveryReloadKey(key => key + 1);
+  };
+
+  const updateSearchQuery = (value) => {
+    setSearchQuery(value);
+    setSearchError('');
+
+    if (value.trim()) {
+      setIsLoadingSearch(true);
+    } else {
+      setSearchResults([]);
+      setIsLoadingSearch(false);
+    }
+  };
+
+  const retrySearch = () => {
+    setSearchError('');
+    setIsLoadingSearch(true);
+    setSearchReloadKey(key => key + 1);
+  };
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setTimeout(() => setSearchResults([]), 0);
       return;
     }
-    setTimeout(() => setIsLoadingSearch(true), 0);
+
+    let active = true;
+    const controller = new AbortController();
+
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     
     searchTimeoutRef.current = setTimeout(() => {
-      fetchMusicApi(searchQuery).then(tracks => {
-        setSearchResults(tracks);
-        setIsLoadingSearch(false);
-      });
+      fetchMusicApi(searchQuery, { signal: controller.signal })
+        .then(tracks => {
+          if (active) setSearchResults(tracks);
+        })
+        .catch(error => {
+          if (active && error.name !== 'AbortError') {
+            setSearchResults([]);
+            setSearchError(error.message);
+          }
+        })
+        .finally(() => {
+          if (active) setIsLoadingSearch(false);
+        });
     }, 500);
-  }, [searchQuery]);
 
-  // --- LRC Parsing ---
-  const parseLRC = (lrcString) => {
-    const lines = lrcString.split('\n');
-    const parsed = [];
-    const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
-    
-    lines.forEach(line => {
-      const match = timeRegex.exec(line);
-      if (match) {
-        const minutes = parseInt(match[1], 10);
-        const seconds = parseInt(match[2], 10);
-        const millis = parseInt(match[3].padEnd(3, '0'), 10);
-        const time = minutes * 60 + seconds + millis / 1000;
-        const text = line.replace(timeRegex, '').trim();
-        if (text) {
-          parsed.push({ time, text });
-        }
-      }
-    });
-    return parsed;
-  };
+    return () => {
+      active = false;
+      controller.abort();
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [searchQuery, searchReloadKey]);
 
   // --- Lyrics Fetching ---
   useEffect(() => {
     if (isLyricsOpen && currentTrack.id !== 'default' && !isRadio) {
-      setTimeout(() => {
-        setIsLoadingLyrics(true);
-        setLyrics({ type: 'loading', data: null });
-      }, 0);
-      fetch(`/api/lyrics?track=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`)
+      let active = true;
+      const controller = new AbortController();
+
+      fetch(`/api/lyrics?track=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`, {
+        signal: controller.signal,
+      })
         .then(res => {
           if (!res.ok) throw new Error('Not found');
           return res.json();
         })
         .then(data => {
-          if (data.syncedLyrics) {
-            setLyrics({ type: 'synced', data: parseLRC(data.syncedLyrics) });
-          } else if (data.plainLyrics) {
-            setLyrics({ type: 'plain', data: data.plainLyrics });
-          } else {
-            setLyrics({ type: 'error', data: "Lyrics not found for this track." });
+          if (active) {
+            if (data.syncedLyrics) {
+              setLyrics({ type: 'synced', data: parseLRC(data.syncedLyrics), trackId: currentTrack.id });
+            } else if (data.plainLyrics) {
+              setLyrics({ type: 'plain', data: data.plainLyrics, trackId: currentTrack.id });
+            } else {
+              setLyrics({ type: 'error', data: 'Lyrics not found for this track.', trackId: currentTrack.id });
+            }
           }
         })
-        .catch(() => setLyrics({ type: 'error', data: "Failed to fetch lyrics." }))
-        .finally(() => setIsLoadingLyrics(false));
+        .catch((error) => {
+          if (active && error.name !== 'AbortError') {
+            setLyrics({ type: 'error', data: 'Failed to fetch lyrics.', trackId: currentTrack.id });
+          }
+        });
+
+      return () => {
+        active = false;
+        controller.abort();
+      };
     }
-  }, [currentTrack, isLyricsOpen, isRadio]);
+  }, [currentTrack.id, currentTrack.title, currentTrack.artist, isLyricsOpen, isRadio]);
 
   // --- Synced Lyrics: Active Line Tracking ---
   useEffect(() => {
@@ -361,17 +410,22 @@ function App() {
     }
     setIsAutoplaying(true);
     try {
-      // Use the artist of the last played track to find similar music
-      const similarTracks = await fetchMusicApi(currentTrack.artist);
-      const newTracks = similarTracks.filter(t => !currentPlaylist.some(pt => pt.id === t.id));
-      if (newTracks.length > 0) {
-        setCurrentPlaylist(prev => [...prev, ...newTracks]);
-        setOriginalPlaylist(prev => [...prev, ...newTracks]);
-        setCurrentTrackIndex(currentPlaylist.length); // Play the first of the newly added tracks
-        setIsPlaying(true);
-      } else {
-        setIsPlaying(false);
-      }
+      const artist = currentTrack.artist;
+      const similarTracks = await fetchMusicApi(artist);
+
+      setCurrentPlaylist(prevPlaylist => {
+        const newTracks = similarTracks.filter(t => !prevPlaylist.some(pt => pt.id === t.id));
+        if (newTracks.length > 0) {
+          const updated = [...prevPlaylist, ...newTracks];
+          setOriginalPlaylist(updated);
+          setCurrentTrackIndex(prevPlaylist.length);
+          setIsPlaying(true);
+          return updated;
+        } else {
+          setIsPlaying(false);
+          return prevPlaylist;
+        }
+      });
     } catch (err) {
       console.error("Autoplay failed:", err);
       setIsPlaying(false);
@@ -382,20 +436,20 @@ function App() {
 
   const handleNext = (overrideRepeatMode = repeatMode) => {
     if (isRadio) return;
-    if (currentPlaylist.length > 0) {
-      let nextIndex = currentTrackIndex + 1;
-      if (nextIndex >= currentPlaylist.length) {
-        if (overrideRepeatMode === 0) {
-          handleAutoplay();
-          return;
-        }
-        nextIndex = 0; 
-      } else {
-        setCurrentTrackIndex(nextIndex);
-        setIsPlaying(true);
-      }
+    const nextIndex = getNextTrackIndex(currentTrackIndex, currentPlaylist.length, overrideRepeatMode);
+
+    if (nextIndex === null) {
+      handleAutoplay();
+      return;
     }
+
+    setCurrentTrackIndex(nextIndex);
+    setIsPlaying(true);
   };
+
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+  });
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -410,74 +464,94 @@ function App() {
         audio.currentTime = 0;
         audio.play().catch(e => console.error(e));
       } else {
-        handleNext(repeatMode);
+        handleNextRef.current?.(repeatMode);
       }
     };
 
+    const handleError = (e) => {
+      console.error("Audio error encountered:", e);
+      setIsPlaying(false);
+      setIsAudioLoading(false);
+      setAudioError('This track could not be played. Try another result.');
+    };
+
+    const handleWaiting = () => setIsAudioLoading(true);
+    const handlePlaying = () => {
+      setIsPlaying(true);
+      setIsAudioLoading(false);
+      setAudioError('');
+    };
+    const handlePause = () => setIsPlaying(false);
+
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
+    audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('playing', handlePlaying);
+    audio.addEventListener('pause', handlePause);
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
+      audio.removeEventListener('waiting', handleWaiting);
+      audio.removeEventListener('playing', handlePlaying);
+      audio.removeEventListener('pause', handlePause);
     };
-  }, [currentPlaylist, currentTrackIndex, repeatMode, isRadio]);
+  }, [repeatMode]);
 
   useEffect(() => {
     const audio = audioRef.current;
     audio.volume = volume;
   }, [volume]);
 
-  useEffect(() => {
+  const requestPlayback = useCallback((track) => {
+    if (!track || track.id === 'default') return;
+
     const audio = audioRef.current;
+    const url = getAudioUrl(track);
+    directPlaybackTrackRef.current = track.id;
+
+    if (audio.src !== new URL(url, window.location.href).href) {
+      audio.src = url;
+      setProgress(0);
+      setCurrentTime(0);
+    }
+
+    setAudioError('');
+    setIsAudioLoading(true);
+    audio.play().catch((error) => {
+      console.error('Playback failed:', error);
+      setIsPlaying(false);
+      setIsAudioLoading(false);
+      setAudioError('Playback was blocked or the stream is unavailable. Press play to retry.');
+    });
+  }, []);
+
+  useEffect(() => {
     if (currentTrack.id === 'default' || isRadio) return;
 
-    let active = true;
-
-    const loadAndPlay = async () => {
-      let url = currentTrack.audioUrl;
-      
-      // If we don't have the stream URL yet, fetch it
-      if (!url) {
-        setIsAudioLoading(true);
-        try {
-          const res = await fetch(`/api/stream?id=${encodeURIComponent(currentTrack.id)}`);
-          const data = await res.json();
-          if (data.streamUrl && active) {
-            url = data.streamUrl;
-            // Cache the stream URL on the track object
-            currentTrack.audioUrl = url;
-          }
-        } catch (err) {
-          console.error('Error fetching stream URL:', err);
-        } finally {
-          if (active) setIsAudioLoading(false);
-        }
+    if (isPlaying) {
+      if (directPlaybackTrackRef.current === currentTrack.id) {
+        directPlaybackTrackRef.current = null;
+        return;
       }
-
-      if (!active || !url) return;
-
-      if (audio.src !== url) {
-        audio.src = url;
-        setProgress(0);
-        setCurrentTime(0);
-      }
-
-      if (isPlaying) {
-        audio.play().catch(e => console.error("Playback failed:", e));
-      } else {
-        audio.pause();
-      }
-    };
-
-    loadAndPlay();
-
-    return () => {
-      active = false;
-    };
-  }, [currentTrack.id, isPlaying, isRadio]);
+      const audio = audioRef.current;
+      const url = getAudioUrl(currentTrack);
+      if (audio.src !== new URL(url, window.location.href).href) audio.src = url;
+      audio.play().catch((error) => {
+        console.error('Playback failed:', error);
+        setIsPlaying(false);
+        setIsAudioLoading(false);
+        setAudioError('Playback was blocked or the stream is unavailable. Press play to retry.');
+      });
+    } else {
+      audioRef.current.pause();
+    }
+  }, [currentTrack, isPlaying, isRadio]);
 
   const handlePlayTrack = (track, playlist) => {
+    if (!track || !playlist?.length) return;
     setIsRadio(false);
     
     if (isShuffle) {
@@ -487,6 +561,7 @@ function App() {
       setCurrentPlaylist(shuffled);
       setCurrentTrackIndex(0);
       setIsPlaying(true);
+      requestPlayback(track);
     } else {
       const index = playlist.findIndex(t => t.id === track.id);
       if (currentTrack.id === track.id && currentPlaylist === playlist) {
@@ -496,6 +571,7 @@ function App() {
         setOriginalPlaylist(playlist);
         setCurrentTrackIndex(index !== -1 ? index : 0);
         setIsPlaying(true);
+        requestPlayback(track);
       }
     }
   };
@@ -560,11 +636,9 @@ function App() {
   };
 
   // --- Media Session API ---
-  const handleNextRef = useRef(handleNext);
   const handlePrevRef = useRef(handlePrev);
   
   useEffect(() => {
-    handleNextRef.current = handleNext;
     handlePrevRef.current = handlePrev;
   });
 
@@ -668,18 +742,19 @@ function App() {
       <div 
         key={`${track.id}-${index}`} 
         className={`track-widget ${currentTrack.id === track.id ? 'playing' : ''}`}
-        onClick={() => handlePlayTrack(track, contextPlaylist)}
       >
-        <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>
-        <div className="track-info">
-          <div className="track-title">{track.title}</div>
-          <div className="track-artist">{track.artist}</div>
-        </div>
+        <button className="track-primary-action" onClick={() => handlePlayTrack(track, contextPlaylist)} aria-label={`Play ${track.title} by ${track.artist}`}>
+          <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>
+          <div className="track-info">
+            <div className="track-title">{track.title}</div>
+            <div className="track-artist">{track.artist}</div>
+          </div>
+        </button>
         <div className="track-actions" style={{position: 'relative'}} onClick={(e) => {
           e.stopPropagation();
           setDropdownOpenId(dropdownOpenId === track.id ? null : track.id);
         }}>
-          <button className="icon-btn" style={{padding: '4px'}}>
+          <button className="icon-btn" style={{padding: '4px'}} aria-label={`More options for ${track.title}`}>
             <MoreHorizontal size={18} className="text-secondary hover:text-primary" />
           </button>
           
@@ -727,6 +802,13 @@ function App() {
     <div className="page-container">
       {isLoadingNew ? (
         <div style={{display: 'flex', justifyContent: 'center', marginTop: '100px'}}><Loader2 className="animate-spin text-accent" size={32} /></div>
+      ) : newTracksError || newTracks.length === 0 ? (
+        <div className="empty-state glass-panel">
+          <Disc size={36} className="text-accent" />
+          <h2 className="font-display">DISCOVERY IS OFFLINE</h2>
+          <p className="text-secondary font-display">{newTracksError || 'No new tracks were returned.'}</p>
+          <button className="btn-primary font-display" onClick={retryDiscovery}>RETRY</button>
+        </div>
       ) : (
         <>
           <section className="hero-widget" style={{'--bg-image': `url(${newTracks[0]?.img || DEFAULT_TRACK.img})`}}>
@@ -760,6 +842,13 @@ function App() {
     <div className="page-container">
       {isLoadingHome ? (
          <div style={{display: 'flex', justifyContent: 'center', marginTop: '100px'}}><Loader2 className="animate-spin text-accent" size={32} /></div>
+      ) : homeTracksError || homeTracks.length === 0 ? (
+        <div className="empty-state glass-panel">
+          <Disc size={36} className="text-accent" />
+          <h2 className="font-display">HOME FEED UNAVAILABLE</h2>
+          <p className="text-secondary font-display">{homeTracksError || 'No recommendations were returned.'}</p>
+          <button className="btn-primary font-display" onClick={retryDiscovery}>RETRY</button>
+        </div>
       ) : (
         <>
           <section>
@@ -793,7 +882,7 @@ function App() {
           className="search-input" 
           placeholder="SEARCH..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => updateSearchQuery(e.target.value)}
         />
       </div>
 
@@ -804,6 +893,11 @@ function App() {
           </div>
           {isLoadingSearch ? (
             <div style={{display: 'flex', justifyContent: 'center', padding: '40px'}}><Loader2 className="animate-spin text-accent" size={32} /></div>
+          ) : searchError ? (
+            <div className="empty-state glass-panel compact">
+              <p className="text-secondary font-display">{searchError}</p>
+              <button className="btn-primary font-display" onClick={retrySearch}>RETRY</button>
+            </div>
           ) : searchResults.length > 0 ? (
             <div className="track-grid">
               {searchResults.map((track, i) => renderTrackWidget(track, searchResults, i))}
@@ -819,9 +913,9 @@ function App() {
           </div>
           <div className="category-grid">
             {CATEGORIES.map(cat => (
-              <div key={cat.id} className="category-widget" style={{'--bg-image': `url(${cat.img})`}} onClick={() => setSearchQuery(cat.name.toLowerCase())}>
+              <button key={cat.id} className="category-widget" style={{'--bg-image': `url(${cat.img})`}} onClick={() => updateSearchQuery(cat.name.toLowerCase())}>
                 <span>{cat.name}</span>
-              </div>
+              </button>
             ))}
           </div>
         </section>
@@ -1179,6 +1273,7 @@ function App() {
           <div style={{flex: 1, overflow: 'hidden'}}>
             <div className="mobile-track-title font-display text-primary">{currentDisplayTrack.title}</div>
             <div className="mobile-track-artist font-display text-secondary">{currentDisplayTrack.artist}</div>
+            {audioError && <div className="player-error font-display">{audioError}</div>}
           </div>
           <div style={{display: 'flex', gap: '8px', position: 'relative'}}>
             <button className="icon-btn" onClick={() => {
@@ -1348,6 +1443,7 @@ function App() {
           <div>
             <div className="font-display text-accent" style={{fontSize: '14px', marginBottom: '2px', letterSpacing: '1px'}}>{currentDisplayTrack.title}</div>
             <div className="font-display text-secondary" style={{fontSize: '12px'}}>{currentDisplayTrack.artist}</div>
+            {audioError && <div className="player-error font-display">{audioError}</div>}
           </div>
         </div>
 

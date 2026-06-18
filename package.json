@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "npm run dev --prefix api",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "NODE_ENV=test node --test tests/*.test.js",
+    "check": "npm run lint && npm test && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
