@@ -622,7 +622,7 @@ function App() {
         }
       }}>
         <div className="player-track-info" onClick={() => { if(window.innerWidth <= 768) setIsMobilePlayerOpen(true); }}>
-          <div className="track-art shadow-sm" style={{margin: 0, backgroundImage: `url(${currentDisplayTrack.img})`, filter: isPlaying ? 'grayscale(0)' : ''}}></div>
+          <div className="track-art shadow-sm" style={{backgroundImage: `url(${currentDisplayTrack.img})`, filter: isPlaying ? 'grayscale(0)' : ''}}></div>
           <div>
             <div className="font-display text-accent" style={{fontSize: '14px', marginBottom: '2px', letterSpacing: '1px'}}>{currentDisplayTrack.title}</div>
             <div className="font-display text-secondary" style={{fontSize: '12px'}}>{currentDisplayTrack.artist}</div>

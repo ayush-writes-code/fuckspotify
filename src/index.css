@@ -609,13 +609,14 @@ button {
   left: 0;
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   z-index: 1000;
-  background: rgba(10, 10, 10, 0.9);
+  background: rgba(10, 10, 10, 0.95);
   backdrop-filter: blur(40px) saturate(200%);
   -webkit-backdrop-filter: blur(40px) saturate(200%);
   display: flex;
   flex-direction: column;
-  padding: 40px 24px;
+  padding: calc(env(safe-area-inset-top, 24px) + 16px) 24px calc(env(safe-area-inset-bottom, 24px) + 16px);
   transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
   overflow: hidden;
 }
@@ -640,8 +641,31 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 40px;
+  margin-bottom: 32px;
   color: rgba(255,255,255,0.6);
+}
+
+.mobile-player-header .icon-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 1;
+}
+
+.mobile-player-header .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+}
+
+.mobile-player-header .icon-btn:active {
+  transform: scale(0.95);
 }
 
 .mobile-album-container {
@@ -738,30 +762,94 @@ button {
 
 @media (max-width: 768px) {
   .app-container {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto auto;
+    display: block; /* Removed grid for mobile as bottom bars are fixed */
   }
   
   .sidebar { display: none; }
   
   .main-content {
-    grid-column: 1 / 2;
     padding: 16px;
     padding-bottom: 160px;
   }
   
-  .track-grid { grid-template-columns: 1fr; gap: 12px; }
+  /* Typography & Sizing Refinements */
+  .hero-widget {
+    height: 280px;
+    padding: 24px;
+    margin-bottom: 24px;
+    border-radius: 12px;
+  }
   
+  .hero-title {
+    font-size: 38px;
+    margin-bottom: 12px;
+  }
+
+  .section-header {
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+
+  .search-container {
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    border-radius: 10px;
+  }
+  
+  .search-input {
+    font-size: 18px;
+  }
+  
+  .category-grid { 
+    grid-template-columns: repeat(2, 1fr); 
+    gap: 12px; 
+  }
+  
+  .category-widget {
+    height: 100px;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+
+  .track-grid { 
+    grid-template-columns: 1fr; 
+    gap: 8px; 
+  }
+
+  .track-widget {
+    padding: 8px;
+    border-radius: 10px;
+  }
+
+  .track-art {
+    width: 48px;
+    height: 48px;
+    margin-right: 12px;
+  }
+
+  .radio-widget {
+    height: 320px;
+    border-radius: 12px;
+  }
+
+  .radio-widget h2 {
+    font-size: 24px !important;
+  }
+
+  /* Bottom Player & Mobile Tab Bar */
   .player-bar {
-    grid-column: 1 / 2;
     padding: 8px 16px;
     height: 64px;
     margin: 8px;
-    border-radius: 12px;
+    border-radius: 16px; /* Pill-like */
     width: calc(100% - 16px);
     bottom: 64px;
     position: fixed;
-    background: rgba(15, 15, 15, 0.95);
+    background: rgba(15, 15, 15, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
   
   .desktop-only { display: none !important; }
@@ -773,9 +861,10 @@ button {
   }
 
   .player-track-info .track-art {
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    margin-right: 12px;
   }
   
   .mobile-tab-bar {
@@ -783,11 +872,27 @@ button {
     justify-content: space-around;
     align-items: center;
     height: 64px;
-    background-color: rgba(10, 10, 10, 0.95);
+    background-color: rgba(5, 5, 5, 0.9);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     position: fixed;
     bottom: 0; width: 100%;
     z-index: 90;
+  }
+
+  /* Expanded Mobile Player Adjustments */
+  .mobile-track-title {
+    font-size: 24px;
+  }
+  
+  .mobile-track-artist {
+    font-size: 16px;
+  }
+  
+  .mobile-album-art {
+    max-width: 280px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
   }
 }
 
