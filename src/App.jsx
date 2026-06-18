@@ -329,6 +329,52 @@ function App() {
     setRepeatMode(prev => (prev + 1) % 3);
   };
 
+  // --- Media Session API ---
+  const handleNextRef = useRef(handleNext);
+  const handlePrevRef = useRef(handlePrev);
+  
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+    handlePrevRef.current = handlePrev;
+  });
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => {
+        setIsPlaying(true);
+        audioRef.current.play().catch(e => console.error(e));
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        setIsPlaying(false);
+        audioRef.current.pause();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        if (handlePrevRef.current) handlePrevRef.current();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        if (handleNextRef.current) handleNextRef.current();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = details.seekTime || 0;
+        }
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentTrack) {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: currentTrack.title === 'NO TRACK SELECTED' ? 'fuckspotify' : currentTrack.title,
+        artist: currentTrack.artist,
+        artwork: [
+          { src: currentTrack.img, sizes: '512x512', type: 'image/jpeg' },
+          { src: currentTrack.img, sizes: '1024x1024', type: 'image/jpeg' }
+        ]
+      });
+    }
+  }, [currentTrack]);
+
   // --- User Storage Actions ---
   const handleToggleFavorite = (track) => {
     setFavorites(prev => {
