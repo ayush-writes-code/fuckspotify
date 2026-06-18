@@ -81,6 +81,30 @@ app.get('/api/import', async (req, res) => {
   }
 });
 
+// 4. Lyrics Endpoint (lrclib)
+app.get('/api/lyrics', async (req, res) => {
+  const { track, artist } = req.query;
+  if (!track || !artist) return res.status(400).json({ error: 'track and artist required' });
+
+  try {
+    const url = `https://lrclib.net/api/search?q=${encodeURIComponent(track + ' ' + artist)}`;
+    const response = await fetch(url, { headers: { 'User-Agent': 'fuckspotify (https://github.com/ayush-writes-code/fuckspotify)' }});
+    const data = await response.json();
+    
+    if (data && data.length > 0) {
+      const bestMatch = data[0];
+      return res.json({
+        plainLyrics: bestMatch.plainLyrics,
+        syncedLyrics: bestMatch.syncedLyrics
+      });
+    }
+    res.status(404).json({ error: 'Lyrics not found' });
+  } catch (error) {
+    console.error('Lyrics fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch lyrics' });
+  }
+});
+
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Music Backend running on port ${PORT}`);
