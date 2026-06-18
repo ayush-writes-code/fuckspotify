@@ -48,8 +48,8 @@ app.get('/api/stream', async (req, res) => {
   if (!id) return res.status(400).json({ error: 'id required' });
 
   try {
-    const data = await SaavnAPI.songs.getSongByIds({ songIds: id });
-    if (data && data[0]) {
+    const data = await SaavnAPI.songs.getSongByIds({ songIds: [id] });
+    if (data && data[0] && data[0].downloadUrl) {
       const dUrls = data[0].downloadUrl;
       const bestUrl = dUrls.find(u => u.quality === '320kbps') || dUrls[dUrls.length - 1];
       return res.json({ streamUrl: bestUrl.url });
