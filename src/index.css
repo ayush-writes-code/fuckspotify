@@ -616,7 +616,9 @@ button {
   -webkit-backdrop-filter: blur(40px) saturate(200%);
   display: flex;
   flex-direction: column;
-  padding: calc(env(safe-area-inset-top, 24px) + 16px) 24px calc(env(safe-area-inset-bottom, 24px) + 16px);
+  padding: 40px 24px;
+  padding-top: calc(env(safe-area-inset-top) + 16px);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
   transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
   overflow: hidden;
 }
@@ -886,7 +888,10 @@ button {
     -webkit-backdrop-filter: blur(30px);
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     position: fixed;
-    bottom: 0; width: 100%;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
     z-index: 90;
   }
 
@@ -1071,4 +1076,59 @@ button {
 @keyframes slideDown {
   from { transform: translate(-50%, -100px); opacity: 0; }
   to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+/* --- Bulletproof iOS Safari 12 / iPhone 6 Mobile Fallbacks --- */
+.is-mobile.app-container {
+  display: block !important;
+}
+
+.is-mobile .sidebar {
+  display: none !important;
+}
+
+.is-mobile .desktop-only {
+  display: none !important;
+}
+
+.is-mobile .mobile-only-flex {
+  display: flex !important;
+}
+
+.is-mobile .main-content {
+  grid-column: auto !important;
+  grid-row: auto !important;
+  width: 100% !important;
+  padding: 16px !important;
+  padding-bottom: 160px !important;
+  height: auto !important;
+  overflow-y: visible !important;
+}
+
+.is-mobile .player-bar {
+  padding: 8px 16px !important;
+  height: 64px !important;
+  margin: 8px !important;
+  border-radius: 16px !important;
+  width: calc(100% - 16px) !important;
+  bottom: 64px !important;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  background: rgba(15, 15, 15, 0.85) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+.is-mobile .mobile-tab-bar {
+  display: flex !important;
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
 }

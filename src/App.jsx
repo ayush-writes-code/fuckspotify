@@ -3,7 +3,7 @@ import {
   Search, Home, Radio, Compass, Disc, 
   Play, Pause, SkipBack, SkipForward, 
   Shuffle, Repeat, Repeat1, Volume2, MoreHorizontal, Heart, Mic2, Loader2, ChevronDown, MessageCircle,
-  Library, Plus, X, Download
+  Library, Plus, X, Download, ListMusic
 } from 'lucide-react';
 import './index.css';
 
@@ -68,11 +68,13 @@ function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [activePlaylistId, setActivePlaylistId] = useState(null);
 
-  // Mobile UI States
+  // Mobile & Overlay UI States
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [lyrics, setLyrics] = useState('');
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
 
   // Refs
@@ -95,6 +97,16 @@ function App() {
     const handleClickOutside = () => setDropdownOpenId(null);
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Window resize listener to detect mobile dynamically
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // --- PWA Custom Install Prompt ---
@@ -145,6 +157,36 @@ function App() {
       console.error('Error fetching music:', err);
       return [];
     }
+  };
+
+  // --- Queue Logic ---
+  const handlePlayNext = (track) => {
+    if (currentPlaylist.length === 0 || currentTrack.id === 'default') {
+      handlePlayTrack(track, [track]);
+      return;
+    }
+    const newPlaylist = [...currentPlaylist];
+    newPlaylist.splice(currentTrackIndex + 1, 0, track);
+    setCurrentPlaylist(newPlaylist);
+    
+    // Sync originalPlaylist
+    const origIndex = originalPlaylist.findIndex(t => t.id === currentTrack.id);
+    if (origIndex !== -1) {
+      const newOrig = [...originalPlaylist];
+      newOrig.splice(origIndex + 1, 0, track);
+      setOriginalPlaylist(newOrig);
+    }
+    setDropdownOpenId(null);
+  };
+
+  const handleAddToQueue = (track) => {
+    if (currentPlaylist.length === 0 || currentTrack.id === 'default') {
+      handlePlayTrack(track, [track]);
+      return;
+    }
+    setCurrentPlaylist(prev => [...prev, track]);
+    setOriginalPlaylist(prev => [...prev, track]);
+    setDropdownOpenId(null);
   };
 
   useEffect(() => {
@@ -885,7 +927,7 @@ function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${isMobile ? 'is-mobile' : ''}`}>
       {showInstallPrompt && (
         <div className="pwa-install-banner glass-panel shadow-glow">
           <div className="pwa-banner-content">
@@ -940,12 +982,12 @@ function App() {
 
       {/* Global Bottom Player */}
       <div className="player-bar glass-panel" onClick={(e) => {
-        if (window.innerWidth <= 768 && e.target.closest('.player-bar')) {
+        if (isMobile && e.target.closest('.player-bar')) {
           if (e.target.closest('button')) return;
           setIsMobilePlayerOpen(true);
         }
       }}>
-        <div className="player-track-info" onClick={() => { if(window.innerWidth <= 768) setIsMobilePlayerOpen(true); }}>
+        <div className="player-track-info" onClick={() => { if(isMobile) setIsMobilePlayerOpen(true); }}>
           <div className="track-art shadow-sm" style={{backgroundImage: `url(${currentDisplayTrack.img})`, filter: isPlaying ? 'grayscale(0)' : ''}}></div>
           <div>
             <div className="font-display text-accent" style={{fontSize: '14px', marginBottom: '2px', letterSpacing: '1px'}}>{currentDisplayTrack.title}</div>
@@ -994,7 +1036,7 @@ function App() {
         </div>
 
         {/* Mobile quick controls on mini player */}
-        <div className="mobile-only-flex" style={{display: window.innerWidth <= 768 ? 'flex' : 'none', gap: '16px', alignItems: 'center'}}>
+        <div className="mobile-only-flex" style={{display: isMobile ? 'flex' : 'none', gap: '16px', alignItems: 'center'}}>
           <button className="player-btn" onClick={(e) => { e.stopPropagation(); handleTogglePlay(); }}>
             {isAudioLoading ? <Loader2 className="animate-spin text-accent" size={24} /> : (isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />)}
           </button>
