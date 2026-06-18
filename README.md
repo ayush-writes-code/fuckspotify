@@ -1,16 +1,56 @@
-# React + Vite
+# fuckspotify
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A local-first music player built with React, Vite, and Express. It currently supports search and playback through JioSaavn, synced lyrics through LRCLIB, playlists and favorites in local storage, a live radio stream, Media Session controls, and PWA installation.
 
-Currently, two official plugins are available:
+## Requirements
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 20 or newer
+- npm
 
-## React Compiler
+## Local development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Install both workspaces:
 
-## Expanding the ESLint configuration
+```bash
+npm install
+npm install --prefix api
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Start the API in one terminal:
+
+```bash
+npm run dev:api
+```
+
+Start the frontend in another terminal:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:5173`. Vite proxies `/api` requests to the API at `http://localhost:3001`.
+
+## Quality checks
+
+```bash
+npm run check
+```
+
+This runs ESLint, the Node test suite, and a production Vite build.
+
+## Configuration
+
+The API accepts these optional environment variables:
+
+- `PORT`: standalone API port, default `3001`.
+- `CORS_ORIGIN`: comma-separated allowed browser origins. Defaults to the two local Vite origins.
+- `VERCEL`: set automatically by Vercel; prevents the serverless function from opening a standalone listener.
+
+## Structure
+
+- `src/App.jsx`: application views and player orchestration.
+- `src/lib/player.js`: tested pure player and lyrics helpers.
+- `api/index.js`: search, audio, playlist-import, and lyrics endpoints.
+- `tests/`: player unit tests and API validation tests.
+
+Favorites, playlists, and the last selected track are stored in the browser. There is no user account or cloud synchronization yet.

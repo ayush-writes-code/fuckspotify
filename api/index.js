@@ -8,18 +8,55 @@ const SaavnAPI = saavn.default || saavn;
 const spotify = spotifyUrlInfo(fetch);
 
 const app = express();
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
+  .split(',')
+  .map(origin => origin.trim());
+
+app.disable('x-powered-by');
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, !origin || allowedOrigins.includes(origin));
+  },
+}));
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
+const UPSTREAM_TIMEOUT_MS = 10_000;
+
+const readQueryParam = (value, maxLength) => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) return null;
+  return normalized;
+};
+
+const withTimeout = async (promise, message = 'Upstream service timed out') => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), UPSTREAM_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const getBestStreamUrl = async (id) => {
+  const data = await withTimeout(SaavnAPI.songs.getSongByIds({ songIds: [id] }));
+  const downloadUrls = data?.[0]?.downloadUrl || [];
+  const best = downloadUrls.find(url => url.quality === '320kbps') || downloadUrls.at(-1);
+  return best?.url || null;
+};
 
 // 1. Search Endpoint
 app.get('/api/search', async (req, res) => {
-  const query = req.query.q;
-  if (!query) return res.status(400).json({ error: 'Query parameter "q" is required' });
+  const query = readQueryParam(req.query.q, 120);
+  if (!query) return res.status(400).json({ error: 'Query "q" must be between 1 and 120 characters' });
 
   try {
-    const data = await SaavnAPI.search.searchSongs({ query, page: 0, limit: 10 });
+    const data = await withTimeout(SaavnAPI.search.searchSongs({ query, page: 0, limit: 10 }));
     const saavnResults = (data.results || []).map(item => {
       // Find best image
       const img = item.image.find(i => i.quality === '500x500') || item.image[item.image.length - 1];
@@ -39,22 +76,18 @@ app.get('/api/search', async (req, res) => {
     res.json({ results: saavnResults });
   } catch (error) {
     console.error('JioSaavn search error:', error);
-    res.json({ results: [] });
+    res.status(502).json({ error: 'Music search is temporarily unavailable' });
   }
 });
 
 // 2. Stream Endpoint (Get audio URL)
 app.get('/api/stream', async (req, res) => {
-  const { id } = req.query;
-  if (!id) return res.status(400).json({ error: 'id required' });
+  const id = readQueryParam(req.query.id, 100);
+  if (!id) return res.status(400).json({ error: 'A valid song id is required' });
 
   try {
-    const data = await SaavnAPI.songs.getSongByIds({ songIds: [id] });
-    if (data && data[0] && data[0].downloadUrl) {
-      const dUrls = data[0].downloadUrl;
-      const bestUrl = dUrls.find(u => u.quality === '320kbps') || dUrls[dUrls.length - 1];
-      return res.json({ streamUrl: bestUrl.url });
-    }
+    const streamUrl = await getBestStreamUrl(id);
+    if (streamUrl) return res.json({ streamUrl });
     res.status(404).json({ error: 'Stream not found' });
   } catch (error) {
     console.error('Stream fetch error:', error);
@@ -62,13 +95,38 @@ app.get('/api/stream', async (req, res) => {
   }
 });
 
+// Browser-friendly audio endpoint. Keeping lookup behind one media URL preserves
+// user-initiated playback while the upstream stream URL is being resolved.
+app.get('/api/audio', async (req, res) => {
+  const id = readQueryParam(req.query.id, 100);
+  if (!id) return res.status(400).json({ error: 'A valid song id is required' });
+
+  try {
+    const streamUrl = await getBestStreamUrl(id);
+    if (!streamUrl) return res.status(404).json({ error: 'Stream not found' });
+    return res.redirect(307, streamUrl);
+  } catch (error) {
+    console.error('Audio redirect error:', error);
+    return res.status(502).json({ error: 'Audio stream is temporarily unavailable' });
+  }
+});
+
 // 3. Spotify/Playlist Import Endpoint
 app.get('/api/import', async (req, res) => {
-  const url = req.query.url;
+  const url = readQueryParam(req.query.url, 500);
   if (!url) return res.status(400).json({ error: 'Spotify URL required' });
 
   try {
-    const data = await spotify.getTracks(url);
+    const parsedUrl = new URL(url);
+    if (!['open.spotify.com', 'spotify.com'].includes(parsedUrl.hostname)) {
+      return res.status(400).json({ error: 'Only Spotify playlist URLs are supported' });
+    }
+  } catch {
+    return res.status(400).json({ error: 'A valid Spotify URL is required' });
+  }
+
+  try {
+    const data = await withTimeout(spotify.getTracks(url), 'Spotify import timed out');
     const tracks = data.map(t => ({
       title: t.name,
       artist: t.artists ? t.artists.map(a => a.name).join(', ') : 'Unknown',
@@ -83,12 +141,17 @@ app.get('/api/import', async (req, res) => {
 
 // 4. Lyrics Endpoint (lrclib)
 app.get('/api/lyrics', async (req, res) => {
-  const { track, artist } = req.query;
-  if (!track || !artist) return res.status(400).json({ error: 'track and artist required' });
+  const track = readQueryParam(req.query.track, 200);
+  const artist = readQueryParam(req.query.artist, 200);
+  if (!track || !artist) return res.status(400).json({ error: 'Valid track and artist values are required' });
 
   try {
     const url = `https://lrclib.net/api/search?q=${encodeURIComponent(track + ' ' + artist)}`;
-    const response = await fetch(url, { headers: { 'User-Agent': 'fuckspotify (https://github.com/ayush-writes-code/fuckspotify)' }});
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'fuckspotify (https://github.com/ayush-writes-code/fuckspotify)' },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`LRCLIB returned ${response.status}`);
     const data = await response.json();
     
     if (data && data.length > 0) {
@@ -105,7 +168,7 @@ app.get('/api/lyrics', async (req, res) => {
   }
 });
 
-if (process.env.NODE_ENV !== 'production') {
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Music Backend running on port ${PORT}`);
   });
