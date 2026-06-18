@@ -6,7 +6,8 @@ const UIContext = createContext();
 export const useUI = () => useContext(UIContext);
 
 export const UIProvider = ({ children }) => {
-  const [activeTab, setActiveTab] = useState('new');
+  const [activeTab, setActiveTab] = useState('home');
+  const [activeArtist, setActiveArtist] = useState(null);
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
@@ -24,6 +25,7 @@ export const UIProvider = ({ children }) => {
   return (
     <UIContext.Provider value={{
       activeTab, setActiveTab,
+      activeArtist, setActiveArtist,
       isMobilePlayerOpen, setIsMobilePlayerOpen,
       isQueueOpen, setIsQueueOpen,
       isLyricsOpen, setIsLyricsOpen,

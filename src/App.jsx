@@ -17,6 +17,7 @@ import { SearchView } from './components/views/SearchView';
 import { LibraryView } from './components/views/LibraryView';
 import { RadioView } from './components/views/RadioView';
 import { NewReleasesView } from './components/views/NewReleasesView';
+import { ArtistView } from './components/views/ArtistView';
 
 function AppContent() {
   const { activeTab, isMobile } = useUI();
@@ -113,6 +114,7 @@ function AppContent() {
         {activeTab === 'search' && <SearchView />}
         {activeTab === 'library' && <LibraryView />}
         {activeTab === 'radio' && <RadioView />}
+        {activeTab === 'artist' && <ArtistView />}
       </main>
 
       <GlobalPlayer />

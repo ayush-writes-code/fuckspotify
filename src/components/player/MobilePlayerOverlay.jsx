@@ -41,19 +41,53 @@ export const MobilePlayerOverlay = () => {
   const totalSegments = 40;
   const activeSegments = isRadio ? 0 : Math.floor(progress * totalSegments);
 
+  const vinylRef = useRef(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [rotation, setRotation] = useState(0);
+
+  useEffect(() => {
+    let animationFrame;
+    if (isPlaying && !isScrubbing) {
+      const animate = () => {
+        setRotation(prev => (prev + 0.5) % 360);
+        animationFrame = requestAnimationFrame(animate);
+      };
+      animationFrame = requestAnimationFrame(animate);
+    }
+    return () => cancelAnimationFrame(animationFrame);
+  }, [isPlaying, isScrubbing]);
+
+  const getAngleFromEvent = (e) => {
+    if (!vinylRef.current) return 0;
+    const rect = vinylRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
+  };
+
+  const handleVinylStart = (e) => {
+    setIsScrubbing(true);
+  };
+
+  const handleVinylMove = (e) => {
+    if (!isScrubbing || isRadio || durationSec === 0) return;
+    const angle = getAngleFromEvent(e);
+    setRotation(angle);
+    // Simple visual scrub mapping (could be mapped to actual duration but let's just use angle delta if we wanted to be complex. For now, it's just visual)
+  };
+
+  const handleVinylEnd = () => {
+    setIsScrubbing(false);
+  };
+
   const handleSeekClick = (e) => {
     if (isRadio) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const percent = clickX / rect.width;
     handleSeek(percent * durationSec);
-  };
-
-  const handleVolumeClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const percent = Math.max(0, Math.min(1, clickX / rect.width));
-    handleVolumeChange(percent);
   };
 
   return (
@@ -74,13 +108,24 @@ export const MobilePlayerOverlay = () => {
       </div>
 
       <div className="mobile-album-container">
-        <div className={`vinyl-widget ${isPlaying ? 'spinning' : ''}`}>
+        <div 
+          className={`vinyl-widget ${isPlaying && !isScrubbing ? 'spinning' : ''}`} 
+          style={{ transform: `rotate(${rotation}deg)`, transition: isScrubbing ? 'none' : 'transform 0.1s linear' }}
+          ref={vinylRef}
+          onTouchStart={handleVinylStart}
+          onTouchMove={handleVinylMove}
+          onTouchEnd={handleVinylEnd}
+          onMouseDown={handleVinylStart}
+          onMouseMove={handleVinylMove}
+          onMouseUp={handleVinylEnd}
+          onMouseLeave={handleVinylEnd}
+        >
           <div className="vinyl-grooves">
             <div className="vinyl-groove" style={{width:'92%',height:'92%'}} />
             <div className="vinyl-groove" style={{width:'80%',height:'80%'}} />
             <div className="vinyl-groove" style={{width:'68%',height:'68%'}} />
           </div>
-          <div className="vinyl-label">
+          <div className="vinyl-label" style={{ transform: `rotate(${-rotation}deg)` }}>
             <img src={currentDisplayTrack.img} alt="album art" className="vinyl-label-art" />
           </div>
           <div className="vinyl-center-dot" />
@@ -165,11 +210,16 @@ export const MobilePlayerOverlay = () => {
 
       <div className="mobile-volume">
         <Volume2 size={20} className="text-secondary" />
-        <div className="volume-bar" onClick={handleVolumeClick} style={{cursor: 'pointer', height: '8px', flex: 1, marginLeft: '16px'}}>
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className={`volume-segment ${(i / 12) <= volume ? 'active' : ''}`} style={{borderRadius: '2px'}}></div>
-          ))}
-        </div>
+        <input 
+          type="range" 
+          className="volume-slider" 
+          style={{ flex: 1, marginLeft: '16px' }}
+          min="0" 
+          max="1" 
+          step="0.01" 
+          value={volume} 
+          onChange={(e) => handleVolumeChange(parseFloat(e.target.value))} 
+        />
       </div>
     </div>
   );

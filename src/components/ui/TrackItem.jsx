@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MoreHorizontal, Heart, Plus, ListMusic, Download } from 'lucide-react';
 import { usePlayer } from '../../store/PlayerContext';
+import { useUI } from '../../store/UIContext';
 
-export const TrackItem = ({ track, contextPlaylist, showArt = true, isPlayingContext = false }) => {
-  const { currentTrack, handlePlayTrack, toggleFavorite, favorites, addToQueue } = usePlayer();
+export const TrackItem = ({ track, contextPlaylist, showArt = true, isPlayingContext = false, isPoster = false }) => {
+  const { currentTrack, handlePlayTrack, toggleFavorite, favorites, addToQueue, playlists, addToPlaylist } = usePlayer();
+  const { setActiveTab, setActiveArtist } = useUI();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -25,12 +27,21 @@ export const TrackItem = ({ track, contextPlaylist, showArt = true, isPlayingCon
   }, [dropdownOpen]);
 
   return (
-    <div className={`track-widget ${isPlaying ? 'playing' : ''}`}>
+    <div className={`track-widget ${isPlaying ? 'playing' : ''} ${isPoster ? 'poster-mode' : ''}`}>
       <button className="track-primary-action" onClick={() => handlePlayTrack(track, contextPlaylist)} aria-label={`Play ${track.title} by ${track.artist}`}>
         {showArt && <div className="track-art" style={{backgroundImage: `url(${track.img})`}}></div>}
         <div className="track-info">
           <div className="track-title">{track.title}</div>
-          <div className="track-artist">{track.artist}</div>
+          <div className="track-artist" 
+               onClick={(e) => {
+                 e.stopPropagation();
+                 setActiveArtist(track.artist);
+                 setActiveTab('artist');
+               }}
+               style={{cursor: 'pointer'}}
+          >
+            {track.artist}
+          </div>
         </div>
       </button>
       
@@ -66,6 +77,18 @@ export const TrackItem = ({ track, contextPlaylist, showArt = true, isPlayingCon
             }}>
               <Download size={16} /> Download
             </button>
+            
+            {playlists.length > 0 && (
+              <>
+                <div className="dropdown-divider"></div>
+                <div className="dropdown-label text-secondary font-display">ADD TO PLAYLIST</div>
+                {playlists.map(pl => (
+                  <button key={pl.id} className="dropdown-item" onClick={() => { addToPlaylist(pl.id, track); setDropdownOpen(false); }}>
+                    <Plus size={16} /> {pl.name}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>

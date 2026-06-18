@@ -6,22 +6,29 @@ import { TrackItem } from '../ui/TrackItem';
 import { apiClient } from '../../services/apiClient';
 
 export const QueueOverlay = () => {
-  const { currentPlaylist, currentTrackIndex, isPlaying, currentTrack } = usePlayer();
+  const { currentPlaylist, currentTrackIndex, isPlaying, currentTrack, repeatMode } = usePlayer();
   const { isQueueOpen, setIsQueueOpen, isLyricsOpen } = useUI();
   const [lyrics, setLyrics] = useState({ type: 'empty', data: null, trackId: null });
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
-  const [activeLyricIndex, setActiveLyricIndex] = useState(-1); // Requires synced lyrics logic which is complex
-  // For now, let's keep it simple or implement it if time permits
+  const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
 
-  const upcomingTracks = currentPlaylist.slice(currentTrackIndex + 1);
+  let upcomingTracks = currentPlaylist.slice(currentTrackIndex + 1);
+  if (repeatMode === 1 && upcomingTracks.length < 20 && currentPlaylist.length > 0) {
+    // Loop the playlist up to 20 upcoming tracks
+    upcomingTracks = [...upcomingTracks, ...currentPlaylist].slice(0, 20);
+  } else {
+    upcomingTracks = upcomingTracks.slice(0, 40); // limit to avoid rendering too much
+  }
 
-  // Quick fetch lyrics if isLyricsOpen and currentTrack changes
   useEffect(() => {
     if (isLyricsOpen && currentTrack.id !== 'default' && lyrics.trackId !== currentTrack.id) {
+      // Clear old lyrics immediately
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLyrics({ type: 'empty', data: null, trackId: currentTrack.id });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoadingLyrics(true);
       apiClient.getLyrics(currentTrack.title, currentTrack.artist).then(res => {
-        setLyrics({ type: res.type, data: res.data, trackId: currentTrack.id });
+        setLyrics({ type: res.type || 'plain', data: res.data || res.lyrics, trackId: currentTrack.id });
       }).catch(() => {
         setLyrics({ type: 'error', data: 'Failed to fetch lyrics.', trackId: currentTrack.id });
       }).finally(() => {

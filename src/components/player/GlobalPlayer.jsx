@@ -11,7 +11,7 @@ export const GlobalPlayer = () => {
     handleVolumeChange, toggleShuffle, toggleRepeat
   } = usePlayer();
 
-  const { isMobile, setIsMobilePlayerOpen, isQueueOpen, setIsQueueOpen, isLyricsOpen, setIsLyricsOpen } = useUI();
+  const { isMobile, setIsMobilePlayerOpen, isQueueOpen, setIsQueueOpen, isLyricsOpen, setIsLyricsOpen, setActiveTab, setActiveArtist } = useUI();
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
@@ -46,13 +46,6 @@ export const GlobalPlayer = () => {
     handleSeek(percent * durationSec);
   };
 
-  const handleVolumeClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const percent = Math.max(0, Math.min(1, clickX / rect.width));
-    handleVolumeChange(percent);
-  };
-
   return (
     <div className="player-bar glass-panel" onClick={(e) => {
       if (isMobile && e.target.closest('.player-bar')) {
@@ -64,7 +57,18 @@ export const GlobalPlayer = () => {
         <div className="track-art shadow-sm" style={{backgroundImage: `url(${currentDisplayTrack.img})`, filter: isPlaying ? 'grayscale(0)' : ''}}></div>
         <div>
           <div className="font-display text-accent" style={{fontSize: '14px', marginBottom: '2px', letterSpacing: '1px'}}>{currentDisplayTrack.title}</div>
-          <div className="font-display text-secondary" style={{fontSize: '12px'}}>{currentDisplayTrack.artist}</div>
+          <div className="font-display text-secondary" 
+               style={{fontSize: '12px', cursor: 'pointer'}}
+               onClick={(e) => {
+                 if (isRadio) return;
+                 e.stopPropagation();
+                 setActiveArtist(currentDisplayTrack.artist);
+                 setActiveTab('artist');
+                 setIsMobilePlayerOpen(false);
+               }}
+          >
+            {currentDisplayTrack.artist}
+          </div>
           {audioError && <div className="player-error font-display">{audioError}</div>}
         </div>
       </div>
@@ -105,11 +109,15 @@ export const GlobalPlayer = () => {
 
       <div className="player-volume desktop-only">
         <Volume2 size={16} className="text-secondary" />
-        <div className="volume-bar" onClick={handleVolumeClick} style={{cursor: 'pointer'}}>
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className={`volume-segment ${(i / 12) <= volume ? 'active' : ''}`}></div>
-          ))}
-        </div>
+        <input 
+          type="range" 
+          className="volume-slider" 
+          min="0" 
+          max="1" 
+          step="0.01" 
+          value={volume} 
+          onChange={(e) => handleVolumeChange(parseFloat(e.target.value))} 
+        />
       </div>
 
       {/* Mobile quick controls on mini player */}
