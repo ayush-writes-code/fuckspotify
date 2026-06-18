@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "regions": ["bom1"],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

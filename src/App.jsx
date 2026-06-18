@@ -70,11 +70,9 @@ function App() {
     ? currentPlaylist[currentTrackIndex] 
     : DEFAULT_TRACK;
 
-  // --- API Fetching ---
   const fetchMusicApi = async (query) => {
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
       return data.results || [];
     } catch (err) {
@@ -190,14 +188,12 @@ function App() {
     }
   }, [currentTrack, isPlaying]);
 
-  // --- Controls ---
   const handlePlayTrack = async (track, playlist) => {
     setIsRadio(false);
     
     // Fetch stream URL from our backend
-    const API_BASE = import.meta.env.VITE_API_URL || '';
     try {
-      const res = await fetch(`${API_BASE}/api/stream?id=${encodeURIComponent(track.id)}`);
+      const res = await fetch(`/api/stream?id=${encodeURIComponent(track.id)}`);
       const data = await res.json();
       if (data.streamUrl) {
         track.audioUrl = data.streamUrl;
