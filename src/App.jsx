@@ -894,7 +894,7 @@ function App() {
             </div>
             <div className="pwa-text">
               <div className="font-display" style={{fontSize: '14px'}}>INSTALL FUCKSPOTIFY</div>
-              <div className="text-secondary font-display" style={{fontSize: '12px'}}>ADD TO HOME SCREEN FOR FULL EXPERIENCE</div>
+              <div className="font-display" style={{fontSize: '12px', color: 'rgba(255,255,255,0.7)'}}>ADD TO HOME SCREEN FOR FULL EXPERIENCE</div>
             </div>
           </div>
           <div className="pwa-actions">

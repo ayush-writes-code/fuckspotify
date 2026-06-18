@@ -1019,10 +1019,10 @@ button {
 /* --- PWA Install Banner --- */
 .pwa-install-banner {
   position: fixed;
-  bottom: 100px;
+  top: 16px;
   left: 16px;
   right: 16px;
-  z-index: 100;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1030,18 +1030,15 @@ button {
   border-radius: 12px;
   background: rgba(20, 20, 20, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  animation: slideUp 0.3s ease-out;
+  animation: slideDown 0.3s ease-out;
 }
 
 @media (min-width: 769px) {
   .pwa-install-banner {
-    bottom: auto;
-    top: 16px;
     left: 50%;
     right: auto;
     transform: translateX(-50%);
     width: 400px;
-    animation: slideDown 0.3s ease-out;
   }
 }
 
