@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Search, Home, Radio, Compass, Disc, 
   Play, Pause, SkipBack, SkipForward, 
@@ -84,6 +84,16 @@ function App() {
   const searchTimeoutRef = useRef(null);
   const lyricsContainerRef = useRef(null);
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
+
+  // Vinyl Widget State
+  const vinylRef = useRef(null);
+  const vinylAngleRef = useRef(0);
+  const vinylAnimRef = useRef(null);
+  const lastTimestampRef = useRef(null);
+  const isScratchingRef = useRef(false);
+  const scratchStartAngleRef = useRef(0);
+  const scratchStartTimeRef = useRef(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   const currentTrack = currentTrackIndex >= 0 && currentPlaylist[currentTrackIndex] 
     ? currentPlaylist[currentTrackIndex] 
@@ -1018,6 +1028,107 @@ function App() {
     );
   };
 
+  // --- Vinyl Spin Animation ---
+  useEffect(() => {
+    const spinVinyl = (timestamp) => {
+      if (!lastTimestampRef.current) lastTimestampRef.current = timestamp;
+      const delta = timestamp - lastTimestampRef.current;
+      lastTimestampRef.current = timestamp;
+
+      if (isPlaying && !isScratchingRef.current) {
+        // 33⅓ RPM = 0.556 rev/sec = 200°/sec
+        vinylAngleRef.current += (delta / 1000) * 200;
+      }
+
+      if (vinylRef.current) {
+        vinylRef.current.style.transform = `rotate(${vinylAngleRef.current}deg)`;
+      }
+      vinylAnimRef.current = requestAnimationFrame(spinVinyl);
+    };
+
+    vinylAnimRef.current = requestAnimationFrame(spinVinyl);
+    return () => {
+      if (vinylAnimRef.current) cancelAnimationFrame(vinylAnimRef.current);
+    };
+  }, [isPlaying]);
+
+  // --- Vinyl Touch/Mouse Scrub Handlers ---
+  const getAngleFromEvent = useCallback((clientX, clientY) => {
+    if (!vinylRef.current) return 0;
+    const rect = vinylRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI);
+  }, []);
+
+  const handleVinylTouchStart = useCallback((e) => {
+    if (isRadio) return;
+    const touch = e.touches[0];
+    isScratchingRef.current = true;
+    scratchStartAngleRef.current = getAngleFromEvent(touch.clientX, touch.clientY);
+    scratchStartTimeRef.current = audioRef.current.currentTime;
+    setIsScrubbing(true);
+  }, [isRadio, getAngleFromEvent]);
+
+  const handleVinylTouchMove = useCallback((e) => {
+    if (!isScratchingRef.current || isRadio) return;
+    const touch = e.touches[0];
+    const currentAngle = getAngleFromEvent(touch.clientX, touch.clientY);
+    let delta = currentAngle - scratchStartAngleRef.current;
+
+    // Normalize to -180..180
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+
+    vinylAngleRef.current += delta;
+    scratchStartAngleRef.current = currentAngle;
+
+    // Map rotation to time: 360° = ~10 seconds of track
+    const audio = audioRef.current;
+    const timeDelta = (delta / 360) * 10;
+    const newTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + timeDelta));
+    audio.currentTime = newTime;
+  }, [isRadio, getAngleFromEvent]);
+
+  const handleVinylTouchEnd = useCallback(() => {
+    isScratchingRef.current = false;
+    setIsScrubbing(false);
+  }, []);
+
+  const handleVinylMouseDown = useCallback((e) => {
+    if (isRadio) return;
+    isScratchingRef.current = true;
+    scratchStartAngleRef.current = getAngleFromEvent(e.clientX, e.clientY);
+    scratchStartTimeRef.current = audioRef.current.currentTime;
+    setIsScrubbing(true);
+
+    const handleMouseMove = (ev) => {
+      if (!isScratchingRef.current) return;
+      const currentAngle = getAngleFromEvent(ev.clientX, ev.clientY);
+      let delta = currentAngle - scratchStartAngleRef.current;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+
+      vinylAngleRef.current += delta;
+      scratchStartAngleRef.current = currentAngle;
+
+      const audio = audioRef.current;
+      const timeDelta = (delta / 360) * 10;
+      const newTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + timeDelta));
+      audio.currentTime = newTime;
+    };
+
+    const handleMouseUp = () => {
+      isScratchingRef.current = false;
+      setIsScrubbing(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [isRadio, getAngleFromEvent]);
+
   const renderExpandedMobilePlayer = () => {
     return (
       <div className={`mobile-player-expanded glass-panel ${isMobilePlayerOpen ? 'open' : ''}`} style={{'--dominant-bg': `url(${currentDisplayTrack.img})`}}>
@@ -1042,7 +1153,25 @@ function App() {
           </div>
         ) : (
           <div className="mobile-album-container">
-            <img src={currentDisplayTrack.img} alt="album art" className="mobile-album-art shadow-glow" />
+            <div
+              className={`vinyl-widget ${isPlaying && !isScrubbing ? 'spinning' : ''}`}
+              ref={vinylRef}
+              onTouchStart={handleVinylTouchStart}
+              onTouchMove={handleVinylTouchMove}
+              onTouchEnd={handleVinylTouchEnd}
+              onMouseDown={handleVinylMouseDown}
+            >
+              <div className="vinyl-grooves">
+                <div className="vinyl-groove" style={{width:'92%',height:'92%'}} />
+                <div className="vinyl-groove" style={{width:'80%',height:'80%'}} />
+                <div className="vinyl-groove" style={{width:'68%',height:'68%'}} />
+              </div>
+              <div className="vinyl-label">
+                <img src={currentDisplayTrack.img} alt="album art" className="vinyl-label-art" />
+              </div>
+              <div className="vinyl-center-dot" />
+              {isScrubbing && <div className="vinyl-scrub-indicator font-display">SCRUBBING</div>}
+            </div>
           </div>
         )}
 

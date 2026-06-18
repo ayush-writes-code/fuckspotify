@@ -697,6 +697,106 @@ button {
   transform: scale(0.8);
 }
 
+/* Vinyl Widget */
+.vinyl-widget {
+  width: min(300px, 80vw);
+  height: min(300px, 80vw);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #1a1a1a 0%,
+    #111 25%,
+    #1a1a1a 26%,
+    #0d0d0d 50%,
+    #1a1a1a 51%,
+    #111 75%,
+    #1a1a1a 76%,
+    #0a0a0a 100%
+  );
+  position: relative;
+  box-shadow:
+    0 0 0 4px rgba(255,255,255,0.05),
+    0 0 40px rgba(0,0,0,0.6),
+    0 0 80px rgba(0,0,0,0.3),
+    inset 0 0 30px rgba(0,0,0,0.5);
+  cursor: grab;
+  touch-action: none;
+  will-change: transform;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vinyl-widget:active {
+  cursor: grabbing;
+}
+
+.vinyl-grooves {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vinyl-groove {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.vinyl-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 3px rgba(255,255,255,0.08),
+    0 0 15px rgba(0,0,0,0.5);
+  z-index: 2;
+}
+
+.vinyl-label-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.vinyl-center-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #222;
+  border: 2px solid rgba(255,255,255,0.15);
+  z-index: 3;
+}
+
+.vinyl-scrub-indicator {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #ff3333;
+  animation: pulse-glow 0.8s ease-in-out infinite alternate;
+  z-index: 4;
+}
+
+@keyframes pulse-glow {
+  from { opacity: 0.5; text-shadow: 0 0 4px rgba(255,51,51,0.3); }
+  to { opacity: 1; text-shadow: 0 0 12px rgba(255,51,51,0.6); }
+}
+
 .mobile-track-info {
   display: flex;
   justify-content: space-between;
