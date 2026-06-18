@@ -543,6 +543,12 @@ function App() {
                 <Heart size={14} fill={isFav ? "currentColor" : "none"} className={isFav ? "text-accent" : ""} /> 
                 {isFav ? 'REMOVE FAVORITE' : 'ADD TO FAVORITES'}
               </button>
+              <button className="dropdown-item font-display" onClick={() => handlePlayNext(track)}>
+                <Play size={14} fill="currentColor" /> PLAY NEXT
+              </button>
+              <button className="dropdown-item font-display" onClick={() => handleAddToQueue(track)}>
+                <ListMusic size={14} /> ADD TO QUEUE
+              </button>
               
               {playlists.filter(pl => pl.id !== playlistId).length > 0 && (
                 <>
@@ -841,6 +847,34 @@ function App() {
 
   const currentDisplayTrack = isRadio ? { title: 'LIVE BROADCAST', artist: 'fuckspotify RADIO 1', img: 'https://images.unsplash.com/photo-1593697821252-0c9137d9fc45?q=80&w=400', time: 'LIVE' } : currentTrack;
 
+  const renderQueueOverlay = () => {
+    const upcomingTracks = currentPlaylist.slice(currentTrackIndex + 1);
+
+    return (
+      <div className={`mobile-player-expanded glass-panel ${isQueueOpen ? 'open' : ''}`} style={{zIndex: 1000, background: '#0a0a0a'}}>
+        <div className="mobile-player-header">
+          <button className="icon-btn" onClick={() => setIsQueueOpen(false)}>
+            <ChevronDown size={32} />
+          </button>
+          <div className="font-display" style={{fontSize: '12px', letterSpacing: '2px'}}>UPCOMING IN QUEUE</div>
+          <div style={{width: '32px'}}></div>
+        </div>
+
+        <div className="queue-list-container" style={{padding: '0 16px', overflowY: 'auto', flex: 1, marginTop: '16px'}}>
+          {upcomingTracks.length > 0 ? (
+            <div className="track-grid" style={{gridTemplateColumns: '1fr', paddingBottom: '100px'}}>
+              {upcomingTracks.map((track, i) => renderTrackWidget(track, currentPlaylist, i + currentTrackIndex + 1))}
+            </div>
+          ) : (
+            <div className="font-display text-secondary" style={{textAlign: 'center', marginTop: '60px', letterSpacing: '1px'}}>
+              QUEUE IS EMPTY
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderExpandedMobilePlayer = () => {
     return (
       <div className={`mobile-player-expanded glass-panel ${isMobilePlayerOpen ? 'open' : ''}`} style={{'--dominant-bg': `url(${currentDisplayTrack.img})`}}>
@@ -849,9 +883,14 @@ function App() {
             <ChevronDown size={32} />
           </button>
           <div className="font-display" style={{fontSize: '12px', letterSpacing: '2px'}}>{isRadio ? 'PLAYING RADIO' : 'NOW PLAYING'}</div>
-          <button className={`icon-btn ${isLyricsOpen ? 'text-accent' : ''}`} onClick={() => setIsLyricsOpen(!isLyricsOpen)}>
-            <MessageCircle size={24} />
-          </button>
+          <div style={{display: 'flex', gap: '8px'}}>
+            <button className={`icon-btn ${isQueueOpen ? 'text-accent' : ''}`} onClick={() => setIsQueueOpen(!isQueueOpen)}>
+              <ListMusic size={24} />
+            </button>
+            <button className={`icon-btn ${isLyricsOpen ? 'text-accent' : ''}`} onClick={() => setIsLyricsOpen(!isLyricsOpen)}>
+              <MessageCircle size={24} />
+            </button>
+          </div>
         </div>
 
         {isLyricsOpen ? (
@@ -1006,6 +1045,9 @@ function App() {
             <button className={`player-btn ${repeatMode > 0 ? 'text-accent' : ''}`} onClick={toggleRepeat}>
               {repeatMode === 2 ? <Repeat1 size={18} /> : <Repeat size={18} />}
             </button>
+            <button className={`player-btn ${isQueueOpen ? 'text-accent' : ''}`} onClick={() => setIsQueueOpen(!isQueueOpen)}>
+              <ListMusic size={18} />
+            </button>
             <button className={`player-btn ${isLyricsOpen ? 'text-accent' : ''}`} onClick={() => setIsLyricsOpen(!isLyricsOpen)}>
               <MessageCircle size={18} />
             </button>
@@ -1059,6 +1101,7 @@ function App() {
       </div>
 
       {renderExpandedMobilePlayer()}
+      {renderQueueOverlay()}
     </div>
   );
 }
