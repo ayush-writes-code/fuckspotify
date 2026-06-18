@@ -62,6 +62,7 @@ function App() {
     try { const p = JSON.parse(localStorage.getItem('fuckspotify_playlists')); return p || []; } catch { return []; }
   });
   const [dropdownOpenId, setDropdownOpenId] = useState(null);
+  const [activePlaylistId, setActivePlaylistId] = useState(null);
 
   // Mobile UI States
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
@@ -370,8 +371,22 @@ function App() {
     setDropdownOpenId(null);
   };
 
+  const handleRemoveFromPlaylist = (trackId, playlistId) => {
+    setPlaylists(prev => {
+      const updated = prev.map(pl => {
+        if (pl.id === playlistId) {
+          return { ...pl, tracks: pl.tracks.filter(t => t.id !== trackId) };
+        }
+        return pl;
+      });
+      localStorage.setItem('fuckspotify_playlists', JSON.stringify(updated));
+      return updated;
+    });
+    setDropdownOpenId(null);
+  };
+
   // --- Views ---
-  const renderTrackWidget = (track, contextPlaylist, index = 0) => {
+  const renderTrackWidget = (track, contextPlaylist, index = 0, playlistId = null) => {
     const isFav = favorites.find(t => t.id === track.id);
     return (
       <div 
@@ -398,15 +413,25 @@ function App() {
                 <Heart size={14} fill={isFav ? "currentColor" : "none"} className={isFav ? "text-accent" : ""} /> 
                 {isFav ? 'REMOVE FAVORITE' : 'ADD TO FAVORITES'}
               </button>
-              {playlists.length > 0 && (
+              
+              {playlists.filter(pl => pl.id !== playlistId).length > 0 && (
                 <>
                   <div className="dropdown-divider"></div>
                   <div className="dropdown-label text-secondary font-display">ADD TO PLAYLIST</div>
-                  {playlists.map(pl => (
+                  {playlists.filter(pl => pl.id !== playlistId).map(pl => (
                     <button key={pl.id} className="dropdown-item font-display" onClick={() => handleAddToPlaylist(track, pl.id)}>
                       <Plus size={14} /> {pl.name}
                     </button>
                   ))}
+                </>
+              )}
+
+              {playlistId && (
+                <>
+                  <div className="dropdown-divider"></div>
+                  <button className="dropdown-item font-display text-accent" onClick={() => handleRemoveFromPlaylist(track.id, playlistId)}>
+                    <Plus size={14} style={{transform: 'rotate(45deg)'}} /> REMOVE FROM PLAYLIST
+                  </button>
                 </>
               )}
             </div>
@@ -522,61 +547,116 @@ function App() {
     </div>
   );
 
-  const renderLibraryView = () => (
-    <div className="page-container">
-      <section>
-        <div className="section-header font-display text-secondary">
-          FAVORITES <span className="text-accent">[{favorites.length}]</span>
-        </div>
-        {favorites.length > 0 ? (
-          <div className="track-grid">
-            {favorites.map((track, i) => renderTrackWidget(track, favorites, i))}
-          </div>
-        ) : (
-          <p className="text-secondary font-display mb-8" style={{marginBottom: '32px'}}>NO FAVORITES YET. HEART SOME TRACKS TO SEE THEM HERE.</p>
-        )}
-      </section>
-
-      <section style={{marginTop: '40px'}}>
-        <div className="section-header font-display text-secondary" style={{justifyContent: 'space-between', borderBottom: 'none'}}>
-          <div>MY PLAYLISTS <span className="text-accent">[{playlists.length}]</span></div>
-          <button className="btn-primary" style={{padding: '8px 16px', fontSize: '12px'}} onClick={handleCreatePlaylist}>
-            <Plus size={14} /> NEW PLAYLIST
+  const renderPlaylistDetailView = (playlist) => {
+    return (
+      <div className="page-container">
+        <div style={{display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px'}}>
+          <button className="icon-btn" onClick={() => setActivePlaylistId(null)} style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            ←
           </button>
+          <div>
+            <div className="text-secondary font-display" style={{fontSize: '12px', letterSpacing: '1px'}}>PLAYLIST</div>
+            <h1 className="font-display" style={{fontSize: '32px', fontWeight: 800}}>{playlist.name}</h1>
+            <div className="text-secondary font-display" style={{fontSize: '14px'}}>{playlist.tracks.length} TRACKS</div>
+          </div>
         </div>
-        
-        {playlists.length > 0 ? (
-          <div className="playlist-grid">
-            {playlists.map(pl => (
-              <div key={pl.id} className="playlist-widget glass-panel" onClick={() => {
-                if (pl.tracks.length > 0) handlePlayTrack(pl.tracks[0], pl.tracks);
+
+        <div style={{display: 'flex', gap: '16px', marginBottom: '32px'}}>
+          {playlist.tracks.length > 0 && (
+            <>
+              <button className="btn-primary font-display" onClick={() => handlePlayTrack(playlist.tracks[0], playlist.tracks)}>
+                <Play size={18} fill="currentColor" /> PLAY ALL
+              </button>
+              <button className="btn-primary font-display" style={{backgroundColor: 'transparent', border: '1px solid var(--text-primary)', color: 'var(--text-primary)'}} onClick={() => {
+                const shuffled = [...playlist.tracks].sort(() => Math.random() - 0.5);
+                handlePlayTrack(shuffled[0], shuffled);
               }}>
-                <div className="playlist-art">
-                  {pl.tracks.length >= 4 ? (
-                    <div className="art-grid">
-                      {pl.tracks.slice(0, 4).map((t, i) => (
-                        <div key={i} style={{backgroundImage: `url(${t.img})`}}></div>
-                      ))}
-                    </div>
-                  ) : pl.tracks.length > 0 ? (
-                    <div className="art-single" style={{backgroundImage: `url(${pl.tracks[0].img})`}}></div>
-                  ) : (
-                    <div className="art-empty"><Disc size={32} className="text-secondary opacity-50" /></div>
-                  )}
-                </div>
-                <div className="playlist-info">
-                  <div className="font-display" style={{fontSize: '18px', fontWeight: 700}}>{pl.name}</div>
-                  <div className="text-secondary font-display" style={{fontSize: '12px', letterSpacing: '1px'}}>{pl.tracks.length} TRACKS</div>
-                </div>
-              </div>
-            ))}
+                <Shuffle size={18} /> SHUFFLE
+              </button>
+            </>
+          )}
+        </div>
+
+        {playlist.tracks.length > 0 ? (
+          <div className="track-grid">
+            {playlist.tracks.map((track, i) => renderTrackWidget(track, playlist.tracks, i, playlist.id))}
           </div>
         ) : (
-          <p className="text-secondary font-display" style={{marginTop: '16px'}}>CREATE A PLAYLIST TO GET STARTED.</p>
+          <p className="text-secondary font-display">THIS PLAYLIST HAS NO TRACKS YET. ADD SOME SONGS FROM SEARCH OR HOME!</p>
         )}
-      </section>
-    </div>
-  );
+      </div>
+    );
+  };
+
+  const renderLibraryView = () => {
+    if (activePlaylistId) {
+      const pl = playlists.find(p => p.id === activePlaylistId);
+      if (pl) return renderPlaylistDetailView(pl);
+    }
+
+    return (
+      <div className="page-container">
+        <section>
+          <div className="section-header font-display text-secondary">
+            FAVORITES <span className="text-accent">[{favorites.length}]</span>
+          </div>
+          {favorites.length > 0 ? (
+            <div className="track-grid">
+              {favorites.map((track, i) => renderTrackWidget(track, favorites, i))}
+            </div>
+          ) : (
+            <p className="text-secondary font-display mb-8" style={{marginBottom: '32px'}}>NO FAVORITES YET. HEART SOME TRACKS TO SEE THEM HERE.</p>
+          )}
+        </section>
+
+        <section style={{marginTop: '40px'}}>
+          <div className="section-header font-display text-secondary" style={{justifyContent: 'space-between', borderBottom: 'none'}}>
+            <div>MY PLAYLISTS <span className="text-accent">[{playlists.length}]</span></div>
+            <button className="btn-primary" style={{padding: '8px 16px', fontSize: '12px'}} onClick={handleCreatePlaylist}>
+              <Plus size={14} /> NEW PLAYLIST
+            </button>
+          </div>
+          
+          {playlists.length > 0 ? (
+            <div className="playlist-grid">
+              {playlists.map(pl => (
+                <div key={pl.id} className="playlist-widget glass-panel" onClick={() => setActivePlaylistId(pl.id)}>
+                  <div className="playlist-art">
+                    {pl.tracks.length >= 4 ? (
+                      <div className="art-grid">
+                        {pl.tracks.slice(0, 4).map((t, i) => (
+                          <div key={i} style={{backgroundImage: `url(${t.img})`}}></div>
+                        ))}
+                      </div>
+                    ) : pl.tracks.length > 0 ? (
+                      <div className="art-single" style={{backgroundImage: `url(${pl.tracks[0].img})`}}></div>
+                    ) : (
+                      <div className="art-empty"><Disc size={32} className="text-secondary opacity-50" /></div>
+                    )}
+                  </div>
+                  <div className="playlist-info">
+                    <div className="font-display" style={{fontSize: '18px', fontWeight: 700}}>{pl.name}</div>
+                    <div className="text-secondary font-display" style={{fontSize: '12px', letterSpacing: '1px'}}>{pl.tracks.length} TRACKS</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-secondary font-display" style={{marginTop: '16px'}}>CREATE A PLAYLIST TO GET STARTED.</p>
+          )}
+        </section>
+      </div>
+    );
+  };
 
   const renderRadioView = () => (
     <div className="page-container">
